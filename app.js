@@ -28,14 +28,27 @@ let appData = {
     }
 };
 
-// Known Eircode / Location lookup database for instant offline/fast mapping
+// Known Eircode / Location lookup database for exact Irish locations
 const KNOWN_EIRCODES = {
     'V42AD96': { name: 'Newcastle West, Co. Limerick (V42 AD96)', lat: 52.4497, lon: -9.0612 },
     'V42 AD96': { name: 'Newcastle West, Co. Limerick (V42 AD96)', lat: 52.4497, lon: -9.0612 },
-    'V94': { name: 'Limerick City', lat: 52.6680, lon: -8.6305 },
-    'V92': { name: 'Tralee, Co. Kerry', lat: 52.2704, lon: -9.7026 },
-    'P56': { name: 'Charleville, Co. Cork', lat: 52.3550, lon: -8.6833 },
-    'D02': { name: 'Dublin City', lat: 53.3498, lon: -6.2603 }
+    'V94XV2W': { name: 'Caherlevoy, Mountcollins, Co. Limerick (V94 XV2W)', lat: 52.3325, lon: -9.1842 },
+    'V94 XV2W': { name: 'Caherlevoy, Mountcollins, Co. Limerick (V94 XV2W)', lat: 52.3325, lon: -9.1842 },
+    'CAHERLEVOY': { name: 'Caherlevoy, Mountcollins, Co. Limerick', lat: 52.3325, lon: -9.1842 },
+    'MOUNTCOLLINS': { name: 'Mountcollins, Co. Limerick', lat: 52.3325, lon: -9.1842 },
+    'ABBEYFEALE': { name: 'Abbeyfeale, Co. Limerick', lat: 52.3847, lon: -9.2982 },
+    'CHARLEVILLE': { name: 'Charleville, Co. Cork', lat: 52.3550, lon: -8.6833 },
+    'TRALEE': { name: 'Tralee, Co. Kerry', lat: 52.2704, lon: -9.7026 },
+    'DUBLIN': { name: 'Dublin City', lat: 53.3498, lon: -6.2603 }
+};
+
+// Routing Key fallback (ONLY used if user types a 3-character prefix like "V94")
+const ROUTING_KEY_FALLBACKS = {
+    'V94': { name: 'Limerick Region (V94)', lat: 52.6680, lon: -8.6305 },
+    'V92': { name: 'Tralee Region (V92)', lat: 52.2704, lon: -9.7026 },
+    'V42': { name: 'Newcastle West Region (V42)', lat: 52.4497, lon: -9.0612 },
+    'P56': { name: 'Charleville Region (P56)', lat: 52.3550, lon: -8.6833 },
+    'D02': { name: 'Dublin Central (D02)', lat: 53.3498, lon: -6.2603 }
 };
 
 // DOM Elements
@@ -77,42 +90,59 @@ const btnChartIrradiance = document.getElementById('btnChartIrradiance');
  */
 async function geocodeAddress(queryStr) {
     if (!queryStr || !queryStr.trim()) return null;
-    const cleanQuery = queryStr.trim().toUpperCase();
+    const rawQuery = queryStr.trim();
+    const uppercaseQuery = rawQuery.toUpperCase();
+    const compactEircode = uppercaseQuery.replace(/\s+/g, '');
 
-    // Check fast lookup table
-    if (KNOWN_EIRCODES[cleanQuery]) {
-        const item = KNOWN_EIRCODES[cleanQuery];
+    // 1. Check exact Eircode / Location in database
+    if (KNOWN_EIRCODES[compactEircode]) {
+        const item = KNOWN_EIRCODES[compactEircode];
+        return { name: item.name, latitude: item.lat, longitude: item.lon };
+    }
+    if (KNOWN_EIRCODES[uppercaseQuery]) {
+        const item = KNOWN_EIRCODES[uppercaseQuery];
         return { name: item.name, latitude: item.lat, longitude: item.lon };
     }
 
+    // Check key town words in query (e.g. Caherlevoy, Mountcollins)
+    if (uppercaseQuery.includes('CAHERLEVOY') || uppercaseQuery.includes('MOUNTCOLLINS')) {
+        return {
+            name: `Caherlevoy, Mountcollins, Co. Limerick (${rawQuery})`,
+            latitude: 52.3325,
+            longitude: -9.1842
+        };
+    }
+
+    // 2. High-Precision Nominatim Geocoding API for full address/Eircode
     try {
-        // Try Nominatim OpenStreetMap Ireland search
-        const encoded = encodeURIComponent(`${queryStr}, Ireland`);
+        const formattedEircode = compactEircode.length === 7 ? `${compactEircode.slice(0, 3)} ${compactEircode.slice(3)}` : rawQuery;
+        const encoded = encodeURIComponent(`${formattedEircode}, Ireland`);
         const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1&countrycodes=ie`);
         if (response.ok) {
             const results = await response.json();
             if (results && results.length > 0) {
                 const item = results[0];
+                const placeName = item.display_name.split(',').slice(0, 3).join(', ');
                 return {
-                    name: `${item.display_name.split(',')[0]}, Ireland (${cleanQuery})`,
+                    name: `${placeName} (${formattedEircode})`,
                     latitude: parseFloat(item.lat),
                     longitude: parseFloat(item.lon)
                 };
             }
         }
     } catch (e) {
-        console.warn('Nominatim geocode failed, trying fallback:', e);
+        console.warn('Nominatim geocode attempt failed:', e);
     }
 
+    // 3. Open-Meteo Geocoding API Search
     try {
-        // Fallback to Open-Meteo Geocoding API
-        const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(queryStr)}&count=1&language=en&format=json`);
+        const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(rawQuery)}&count=1&language=en&format=json`);
         if (response.ok) {
             const data = await response.json();
             if (data.results && data.results.length > 0) {
                 const item = data.results[0];
                 return {
-                    name: `${item.name}${item.admin1 ? ', Co. ' + item.admin1 : ''} (${cleanQuery})`,
+                    name: `${item.name}${item.admin1 ? ', Co. ' + item.admin1 : ''} (${rawQuery})`,
                     latitude: item.latitude,
                     longitude: item.longitude
                 };
@@ -120,6 +150,12 @@ async function geocodeAddress(queryStr) {
         }
     } catch (e) {
         console.warn('Open-Meteo geocode failed:', e);
+    }
+
+    // 4. Coarse Routing Key fallback ONLY if user entered a 3-character prefix (e.g. "V94")
+    if (compactEircode.length === 3 && ROUTING_KEY_FALLBACKS[compactEircode]) {
+        const item = ROUTING_KEY_FALLBACKS[compactEircode];
+        return { name: item.name, latitude: item.lat, longitude: item.lon };
     }
 
     return null;
@@ -132,7 +168,7 @@ async function handleLocationSearch(queryOverride) {
     const query = queryOverride || locationSearchInput.value;
     if (!query) return;
 
-    showLoadingScreen(`Searching location for "${query}"...`);
+    showLoadingScreen(`Finding exact coordinates for "${query}"...`);
     const geo = await geocodeAddress(query);
 
     if (geo) {
@@ -145,7 +181,7 @@ async function handleLocationSearch(queryOverride) {
         processForecastData();
         renderAllViews();
     } else {
-        alert(`Could not find coordinates for "${query}". Reverting to Newcastle West (V42 AD96).`);
+        alert(`Could not resolve map coordinates for "${query}". Reverting to Caherlevoy / Newcastle West.`);
     }
 
     hideLoadingScreen();
@@ -154,7 +190,7 @@ async function handleLocationSearch(queryOverride) {
 function updateLocationHeaderBadges() {
     const { name, latitude, longitude } = appData.currentLocation;
     locationDisplayBadge.textContent = `📍 ${name}`;
-    footerCoordsText.textContent = `${name} • Lat: ${latitude.toFixed(4)}° N | Lon: ${longitude.toFixed(4)}° W`;
+    footerCoordsText.textContent = `${name} • Coordinates: ${latitude.toFixed(4)}° N, ${longitude.toFixed(4)}° W`;
 }
 
 /**
@@ -433,7 +469,6 @@ async function initApp() {
         weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
     });
 
-    // Check URL parameters for custom eircode or location (e.g. ?eircode=V42AD96 or ?location=Tralee)
     const urlParams = new URLSearchParams(window.location.search);
     const paramLoc = urlParams.get('eircode') || urlParams.get('location') || urlParams.get('search');
     if (paramLoc) {
@@ -448,13 +483,11 @@ async function initApp() {
 
     updateLocationHeaderBadges();
 
-    // Event listeners
     btnSearchLocation.addEventListener('click', () => handleLocationSearch());
     locationSearchInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleLocationSearch();
     });
 
-    // Preset pills event listener
     document.querySelectorAll('.pill-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const loc = e.target.getAttribute('data-loc');

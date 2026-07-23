@@ -249,7 +249,7 @@
             </div>
             
             <div class="search-input-group">
-                <input type="text" id="locationSearchInput" placeholder="Enter Eircode (e.g. V42 AD96) or Town / Address..." value="V42 AD96">
+                <input type="text" id="locationSearchInput" placeholder="Enter Eircode (e.g. V42 AD96, V94 XV2W) or Town..." value="V42 AD96">
                 <button id="btnSearchLocation" class="btn-search">
                     🔎 Lookup Location
                 </button>
@@ -258,11 +258,11 @@
             <div class="preset-pills">
                 <span>Quick Select:</span>
                 <button class="pill-btn" data-loc="V42 AD96, Newcastle West">📍 V42 AD96 (Newcastle West)</button>
+                <button class="pill-btn" data-loc="V94 XV2W, Caherlevoy">📍 V94 XV2W (Caherlevoy Mountcollins)</button>
                 <button class="pill-btn" data-loc="Abbeyfeale, Co. Limerick">📍 Abbeyfeale</button>
                 <button class="pill-btn" data-loc="Limerick City">📍 Limerick City</button>
                 <button class="pill-btn" data-loc="Charleville, Co. Cork">📍 Charleville</button>
                 <button class="pill-btn" data-loc="Tralee, Co. Kerry">📍 Tralee</button>
-                <button class="pill-btn" data-loc="Dublin, Ireland">📍 Dublin</button>
             </div>
         </section>
 
@@ -399,10 +399,22 @@
         const KNOWN_EIRCODES = {
             'V42AD96': { name: 'Newcastle West, Co. Limerick (V42 AD96)', lat: 52.4497, lon: -9.0612 },
             'V42 AD96': { name: 'Newcastle West, Co. Limerick (V42 AD96)', lat: 52.4497, lon: -9.0612 },
-            'V94': { name: 'Limerick City', lat: 52.6680, lon: -8.6305 },
-            'V92': { name: 'Tralee, Co. Kerry', lat: 52.2704, lon: -9.7026 },
-            'P56': { name: 'Charleville, Co. Cork', lat: 52.3550, lon: -8.6833 },
-            'D02': { name: 'Dublin City', lat: 53.3498, lon: -6.2603 }
+            'V94XV2W': { name: 'Caherlevoy, Mountcollins, Co. Limerick (V94 XV2W)', lat: 52.3325, lon: -9.1842 },
+            'V94 XV2W': { name: 'Caherlevoy, Mountcollins, Co. Limerick (V94 XV2W)', lat: 52.3325, lon: -9.1842 },
+            'CAHERLEVOY': { name: 'Caherlevoy, Mountcollins, Co. Limerick', lat: 52.3325, lon: -9.1842 },
+            'MOUNTCOLLINS': { name: 'Mountcollins, Co. Limerick', lat: 52.3325, lon: -9.1842 },
+            'ABBEYFEALE': { name: 'Abbeyfeale, Co. Limerick', lat: 52.3847, lon: -9.2982 },
+            'CHARLEVILLE': { name: 'Charleville, Co. Cork', lat: 52.3550, lon: -8.6833 },
+            'TRALEE': { name: 'Tralee, Co. Kerry', lat: 52.2704, lon: -9.7026 },
+            'DUBLIN': { name: 'Dublin City', lat: 53.3498, lon: -6.2603 }
+        };
+
+        const ROUTING_KEY_FALLBACKS = {
+            'V94': { name: 'Limerick Region (V94)', lat: 52.6680, lon: -8.6305 },
+            'V92': { name: 'Tralee Region (V92)', lat: 52.2704, lon: -9.7026 },
+            'V42': { name: 'Newcastle West Region (V42)', lat: 52.4497, lon: -9.0612 },
+            'P56': { name: 'Charleville Region (P56)', lat: 52.3550, lon: -8.6833 },
+            'D02': { name: 'Dublin Central (D02)', lat: 53.3498, lon: -6.2603 }
         };
 
         function getSunPosition(date, lat = 52.4497, lon = -9.0612) {
@@ -524,32 +536,42 @@
 
         async function geocodeAddress(queryStr) {
             if (!queryStr || !queryStr.trim()) return null;
-            const cleanQuery = queryStr.trim().toUpperCase();
+            const rawQuery = queryStr.trim();
+            const uppercaseQuery = rawQuery.toUpperCase();
+            const compactEircode = uppercaseQuery.replace(/\s+/g, '');
 
-            if (KNOWN_EIRCODES[cleanQuery]) {
-                const item = KNOWN_EIRCODES[cleanQuery];
-                return { name: item.name, latitude: item.lat, longitude: item.lon };
+            if (KNOWN_EIRCODES[compactEircode]) return KNOWN_EIRCODES[compactEircode];
+            if (KNOWN_EIRCODES[uppercaseQuery]) return KNOWN_EIRCODES[uppercaseQuery];
+
+            if (uppercaseQuery.includes('CAHERLEVOY') || uppercaseQuery.includes('MOUNTCOLLINS')) {
+                return { name: `Caherlevoy, Mountcollins, Co. Limerick (${rawQuery})`, lat: 52.3325, lon: -9.1842 };
             }
 
             try {
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(queryStr + ', Ireland')}&format=json&limit=1&countrycodes=ie`);
+                const formattedEircode = compactEircode.length === 7 ? `${compactEircode.slice(0, 3)} ${compactEircode.slice(3)}` : rawQuery;
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(formattedEircode + ', Ireland')}&format=json&limit=1&countrycodes=ie`);
                 if (response.ok) {
                     const results = await response.json();
                     if (results && results.length > 0) {
-                        return { name: `${results[0].display_name.split(',')[0]}, Ireland (${cleanQuery})`, latitude: parseFloat(results[0].lat), longitude: parseFloat(results[0].lon) };
+                        const placeName = results[0].display_name.split(',').slice(0, 3).join(', ');
+                        return { name: `${placeName} (${formattedEircode})`, lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
                     }
                 }
             } catch (e) {}
 
             try {
-                const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(queryStr)}&count=1&language=en&format=json`);
+                const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(rawQuery)}&count=1&language=en&format=json`);
                 if (response.ok) {
                     const data = await response.json();
                     if (data.results && data.results.length > 0) {
-                        return { name: `${data.results[0].name} (${cleanQuery})`, latitude: data.results[0].latitude, longitude: data.results[0].longitude };
+                        return { name: `${data.results[0].name} (${rawQuery})`, lat: data.results[0].latitude, lon: data.results[0].longitude };
                     }
                 }
             } catch (e) {}
+
+            if (compactEircode.length === 3 && ROUTING_KEY_FALLBACKS[compactEircode]) {
+                return ROUTING_KEY_FALLBACKS[compactEircode];
+            }
             return null;
         }
 
@@ -558,21 +580,21 @@
             if (!query) return;
 
             const loader = document.getElementById('loadingOverlay');
-            document.getElementById('loadingSubtitle').textContent = `Searching location for "${query}"...`;
+            document.getElementById('loadingSubtitle').textContent = `Finding exact coordinates for "${query}"...`;
             loader.style.display = 'flex'; loader.style.opacity = '1';
 
             const geo = await geocodeAddress(query);
             if (geo) {
                 appData.currentLocation.name = geo.name;
-                appData.currentLocation.latitude = geo.latitude;
-                appData.currentLocation.longitude = geo.longitude;
+                appData.currentLocation.latitude = geo.lat || geo.latitude;
+                appData.currentLocation.longitude = geo.lon || geo.longitude;
 
                 updateLocationHeaderBadges();
                 appData.hourlyWeather = await fetchWeatherData();
                 processForecastData();
                 renderAllViews();
             } else {
-                alert(`Could not find coordinates for "${query}". Reverting to Newcastle West (V42 AD96).`);
+                alert(`Could not resolve map coordinates for "${query}". Reverting to Caherlevoy / Newcastle West.`);
             }
 
             loader.style.opacity = '0';
@@ -582,7 +604,7 @@
         function updateLocationHeaderBadges() {
             const { name, latitude, longitude } = appData.currentLocation;
             document.getElementById('locationDisplayBadge').textContent = `📍 ${name}`;
-            document.getElementById('footerCoordsText').textContent = `${name} • Lat: ${latitude.toFixed(4)}° N | Lon: ${longitude.toFixed(4)}° W`;
+            document.getElementById('footerCoordsText').textContent = `${name} • Coordinates: ${latitude.toFixed(4)}° N, ${longitude.toFixed(4)}° W`;
         }
 
         async function fetchWeatherData() {
