@@ -100,22 +100,12 @@ window.SolarModel = (function() {
         };
     }
 
-    function analyzeDailySolarForecast(dailyHoursData, config = {}) {
-        const {
-            systemCapacityKwp = 5.0,
-            panelTiltDeg = 35,
-            panelAzimuthDeg = 180,
-            exportTariffCent = 18.5,     // 18.5c per kWh microgen tariff
-            importTariffCent = 35.0,     // 35c per kWh grid import cost saved
-            sunnyDayConsumptionKwh = 10, // 10 kWh daily load on sunny days
-            rainyDayConsumptionKwh = 13  // 12-13 kWh daily load on rainy days
-        } = config;
-
+    function analyzeDailySolarForecast(dailyHoursData, systemCapacityKwp = 5.0, panelTiltDeg = 35, panelAzimuthDeg = 180, lat = 52.4497, lon = -9.0612) {
         let totalKwh = 0, maxPowerKw = 0, peakHourStr = '', totalCloudSum = 0, daylightCount = 0;
         const hourlyYields = [];
 
         dailyHoursData.forEach(hour => {
-            const yieldData = calculateHourlyYield(hour, { systemCapacityKwp, panelTiltDeg, panelAzimuthDeg, latitude: config.latitude, longitude: config.longitude });
+            const yieldData = calculateHourlyYield(hour, { systemCapacityKwp, panelTiltDeg, panelAzimuthDeg, latitude: lat, longitude: lon });
             hourlyYields.push({ ...hour, ...yieldData });
             totalKwh += yieldData.powerKw;
 
@@ -138,10 +128,6 @@ window.SolarModel = (function() {
         let rating = 'POOR', ratingLabel = 'Bad Solar Day', ratingIcon = '🌧️', ratingClass = 'badge-poor';
         let summaryText = 'Heavy clouds/rain expected. Low solar output; plan grid/battery reliance.';
 
-        // Adjust daily consumption: sunny day (10 kWh) vs rainy/cloudy day (12-13 kWh)
-        const isSunny = score >= 50 || yieldPerKwp >= 2.0;
-        const dailyConsumptionKwh = isSunny ? sunnyDayConsumptionKwh : rainyDayConsumptionKwh;
-
         if (score >= 72 || yieldPerKwp >= 3.2) {
             rating = 'EXCELLENT'; ratingLabel = 'Great Solar Day'; ratingIcon = '☀️'; ratingClass = 'badge-excellent';
             summaryText = 'High solar generation expected! Great window to charge EV, heat water/home, & export energy.';
@@ -152,15 +138,6 @@ window.SolarModel = (function() {
             rating = 'MODERATE'; ratingLabel = 'Moderate Solar Day'; ratingIcon = '⛅'; ratingClass = 'badge-moderate';
             summaryText = 'Passing clouds & partial sun. Moderate generation; stagger heavy appliance loads.';
         }
-
-        // Export & Financial Calculations
-        const selfConsumedKwh = Math.min(totalKwh, dailyConsumptionKwh);
-        const exportedKwh = Math.max(0, totalKwh - dailyConsumptionKwh);
-        const importedGridKwh = Math.max(0, dailyConsumptionKwh - totalKwh);
-
-        const exportEarningsEuros = (exportedKwh * exportTariffCent) / 100;
-        const selfConsumptionSavingsEuros = (selfConsumedKwh * importTariffCent) / 100;
-        const totalFinancialValueEuros = exportEarningsEuros + selfConsumptionSavingsEuros;
 
         const highGenHours = hourlyYields.filter(h => h.powerKw >= Math.max(0.4, maxPowerKw * 0.55)).map(h => new Date(h.time).getHours());
         let optimalWindow = 'N/A';
@@ -173,18 +150,7 @@ window.SolarModel = (function() {
             totalKwh: parseFloat(totalKwh.toFixed(2)),
             yieldPerKwp: parseFloat(yieldPerKwp.toFixed(2)),
             maxPowerKw: parseFloat(maxPowerKw.toFixed(2)),
-            peakHourStr, avgCloudCover, score, rating, ratingLabel, ratingIcon, ratingClass, summaryText, optimalWindow,
-            
-            // Financial & Export Metrics
-            dailyConsumptionKwh,
-            selfConsumedKwh: parseFloat(selfConsumedKwh.toFixed(2)),
-            exportedKwh: parseFloat(exportedKwh.toFixed(2)),
-            importedGridKwh: parseFloat(importedGridKwh.toFixed(2)),
-            exportEarningsEuros: parseFloat(exportEarningsEuros.toFixed(2)),
-            selfConsumptionSavingsEuros: parseFloat(selfConsumptionSavingsEuros.toFixed(2)),
-            totalFinancialValueEuros: parseFloat(totalFinancialValueEuros.toFixed(2)),
-
-            hourlyYields
+            peakHourStr, avgCloudCover, score, rating, ratingLabel, ratingIcon, ratingClass, summaryText, optimalWindow, hourlyYields
         };
     }
 

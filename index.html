@@ -29,7 +29,7 @@
                 <div class="brand-icon">☀️</div>
                 <div class="brand-text">
                     <h1>Solar Weather Predictor</h1>
-                    <p>Hourly Solar Generation, Export Earnings & Weather Model • Ireland</p>
+                    <p>Hourly Solar Generation & Weather Model • Ireland & Eircode Search</p>
                 </div>
             </div>
 
@@ -70,11 +70,11 @@
             </div>
         </section>
 
-        <!-- Solar PV & Export Tariff Configuration Toolbar -->
+        <!-- Solar PV Configuration Toolbar -->
         <section class="config-bar">
             <div class="config-group">
                 <label for="sysCapacity">System Size (kWp)</label>
-                <input type="number" id="sysCapacity" value="7.9" step="0.1" min="1.0" max="30.0">
+                <input type="number" id="sysCapacity" value="5.0" step="0.5" min="1.0" max="30.0">
             </div>
 
             <div class="config-group">
@@ -93,27 +93,12 @@
                 </select>
             </div>
 
-            <div class="config-group">
-                <label for="exportTariff">Microgen Export Rate (c/kWh)</label>
-                <input type="number" id="exportTariff" value="18.5" step="0.5" min="0" max="50">
-            </div>
-
-            <div class="config-group">
-                <label for="sunnyLoad">Sunny Day Load (kWh)</label>
-                <input type="number" id="sunnyLoad" value="10.0" step="0.5" min="1" max="50">
-            </div>
-
-            <div class="config-group">
-                <label for="rainyLoad">Rainy Day Load (kWh)</label>
-                <input type="number" id="rainyLoad" value="13.0" step="0.5" min="1" max="50">
-            </div>
-
             <button id="btnRecalculate" class="btn-update">
                 🔄 Update Model
             </button>
         </section>
 
-        <!-- Hero Stats, Verdict & Export Earnings Cards -->
+        <!-- Hero Stats & Verdict Cards -->
         <section class="hero-summary">
             <!-- Daily Solar Verdict -->
             <div class="card verdict-card">
@@ -144,35 +129,32 @@
                     <span>⚡</span>
                 </div>
                 <div class="main-stat">
-                    <span id="totalKwhVal">39.0</span> <span class="unit">kWh</span>
+                    <span id="totalKwhVal">18.4</span> <span class="unit">kWh</span>
                 </div>
-                <p class="stat-desc">Equivalent to <strong id="yieldPerKwpVal">4.94</strong> kWh per installed kWp.</p>
+                <p class="stat-desc">Equivalent to <strong id="yieldPerKwpVal">3.68</strong> kWh per installed kWp.</p>
                 <div class="appliance-box" id="applianceAdviceBox">
                     💡 <strong>Optimal Loads Window:</strong> <span id="applianceWindowVal">11:00 AM – 15:00 PM</span>
                 </div>
             </div>
 
-            <!-- Grid Export Earnings Card -->
-            <div class="card" style="border-color: rgba(16, 185, 129, 0.4); background: linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(6, 78, 59, 0.4));">
+            <!-- Peak Generation & Cloud Card -->
+            <div class="card">
                 <div class="card-title">
-                    <span>Grid Export Cash Earnings</span>
-                    <span style="color: #34d399;">💶 @ 18.5c/kWh</span>
+                    <span>Peak Solar Power</span>
+                    <span>🌤️</span>
                 </div>
-                <div class="main-stat" style="color: #34d399;">
-                    €<span id="exportEarningsVal">5.37</span>
+                <div class="main-stat">
+                    <span id="peakPowerVal">3.85</span> <span class="unit">kW</span>
                 </div>
-                <p class="stat-desc">Exporting <strong id="exportedKwhVal" style="color: #34d399;">29.0 kWh</strong> back to the electrical grid today.</p>
-                <div style="margin-top: 10px; font-size: 0.8rem; color: #94a3b8;">
-                    🏠 Home Used: <strong id="selfConsumedKwhVal" style="color: #fff;">10.0 kWh</strong> | Total Value: <strong id="totalFinancialVal" style="color: #34d399;">€8.87</strong>
-                </div>
+                <p class="stat-desc">Expected around <strong id="peakHourVal">13:00</strong>. Avg daytime cloud cover: <strong id="avgCloudVal">32%</strong>.</p>
             </div>
         </section>
 
         <!-- 7-Day Solar Forecast Calendar -->
         <section style="display: flex; flex-direction: column; gap: 12px;">
             <div class="section-header">
-                <h2 class="section-title">📅 7-Day Solar Forecast & Export Calendar</h2>
-                <p style="font-size: 0.85rem; color: #94a3b8;">Click any day to view detailed hourly model and grid export earnings</p>
+                <h2 class="section-title">📅 7-Day Solar Forecast Calendar</h2>
+                <p style="font-size: 0.85rem; color: #94a3b8;">Click any day to view its detailed hourly model</p>
             </div>
 
             <div id="forecastGrid" class="forecast-grid">

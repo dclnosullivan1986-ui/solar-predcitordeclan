@@ -22,12 +22,9 @@ let appData = {
     chartInstance: null,
     viewMode: 'generation',
     config: {
-        systemCapacityKwp: 7.9,        // Default 7.9 kW (18 panels)
+        systemCapacityKwp: 5.0,
         panelTiltDeg: 35,
-        panelAzimuthDeg: 180,
-        exportTariffCent: 18.5,       // 18.5c per kWh microgen export rate
-        sunnyDayConsumptionKwh: 10.0, // 10 kWh daily load on sunny days
-        rainyDayConsumptionKwh: 13.0   // 12-13 kWh daily load on rainy days
+        panelAzimuthDeg: 180
     }
 };
 
@@ -65,9 +62,6 @@ const btnSearchLocation = document.getElementById('btnSearchLocation');
 const sysCapacityInput = document.getElementById('sysCapacity');
 const panelTiltInput = document.getElementById('panelTilt');
 const panelOrientationSelect = document.getElementById('panelOrientation');
-const exportTariffInput = document.getElementById('exportTariff');
-const sunnyLoadInput = document.getElementById('sunnyLoad');
-const rainyLoadInput = document.getElementById('rainyLoad');
 const btnRecalculate = document.getElementById('btnRecalculate');
 const currentTimeDisplay = document.getElementById('currentTimeDisplay');
 
@@ -84,12 +78,6 @@ const applianceWindowVal = document.getElementById('applianceWindowVal');
 const peakPowerVal = document.getElementById('peakPowerVal');
 const peakHourVal = document.getElementById('peakHourVal');
 const avgCloudVal = document.getElementById('avgCloudVal');
-
-// Financial DOM Elements
-const exportEarningsVal = document.getElementById('exportEarningsVal');
-const exportedKwhVal = document.getElementById('exportedKwhVal');
-const selfConsumedKwhVal = document.getElementById('selfConsumedKwhVal');
-const totalFinancialVal = document.getElementById('totalFinancialVal');
 
 const forecastGrid = document.getElementById('forecastGrid');
 const hourlyTableBody = document.getElementById('hourlyTableBody');
@@ -249,16 +237,14 @@ function processForecastData() {
     });
 
     appData.dailyAnalyses = Object.values(groups).map(dayHours => {
-        return analyzeDailySolarForecast(dayHours, {
-            systemCapacityKwp: appData.config.systemCapacityKwp,
-            panelTiltDeg: appData.config.panelTiltDeg,
-            panelAzimuthDeg: appData.config.panelAzimuthDeg,
-            exportTariffCent: appData.config.exportTariffCent,
-            sunnyDayConsumptionKwh: appData.config.sunnyDayConsumptionKwh,
-            rainyDayConsumptionKwh: appData.config.rainyDayConsumptionKwh,
-            latitude: appData.currentLocation.latitude,
-            longitude: appData.currentLocation.longitude
-        });
+        return analyzeDailySolarForecast(
+            dayHours,
+            appData.config.systemCapacityKwp,
+            appData.config.panelTiltDeg,
+            appData.config.panelAzimuthDeg,
+            appData.currentLocation.latitude,
+            appData.currentLocation.longitude
+        );
     });
 }
 
@@ -277,9 +263,6 @@ function renderForecastCalendar() {
             <div class="day-sub">${dateFormatted}</div>
             <div class="day-icon">${day.ratingIcon}</div>
             <div class="day-kwh">${day.totalKwh} <span style="font-size: 0.8rem;">kWh</span></div>
-            <div style="font-size: 0.82rem; font-weight: 700; color: #34d399; margin-top: 4px;">
-                💶 €${day.exportEarningsEuros.toFixed(2)} export
-            </div>
             <div class="day-cloud">☁️ ${day.avgCloudCover}% cloud</div>
             <div style="margin-top: 8px;">
                 <span class="solar-badge ${day.ratingClass}" style="font-size: 0.7rem; padding: 2px 8px;">${day.rating}</span>
@@ -318,12 +301,6 @@ function renderHeroSummary() {
     peakPowerVal.textContent = day.maxPowerKw;
     peakHourVal.textContent = day.peakHourStr || 'N/A';
     avgCloudVal.textContent = `${day.avgCloudCover}%`;
-
-    // Populate Export Earnings & Financial Cards
-    exportEarningsVal.textContent = day.exportEarningsEuros.toFixed(2);
-    exportedKwhVal.textContent = `${day.exportedKwh.toFixed(1)} kWh`;
-    selfConsumedKwhVal.textContent = `${day.selfConsumedKwh.toFixed(1)} kWh`;
-    totalFinancialVal.textContent = `€${day.totalFinancialValueEuros.toFixed(2)}`;
 }
 
 function renderHourlyTable() {
@@ -426,12 +403,9 @@ function renderAllViews() {
 }
 
 function handleConfigUpdate() {
-    appData.config.systemCapacityKwp = parseFloat(sysCapacityInput.value) || 7.9;
+    appData.config.systemCapacityKwp = parseFloat(sysCapacityInput.value) || 5.0;
     appData.config.panelTiltDeg = parseFloat(panelTiltInput.value) || 35;
     appData.config.panelAzimuthDeg = ORIENTATIONS[panelOrientationSelect.value] || 180;
-    appData.config.exportTariffCent = parseFloat(exportTariffInput.value) || 18.5;
-    appData.config.sunnyDayConsumptionKwh = parseFloat(sunnyLoadInput.value) || 10.0;
-    appData.config.rainyDayConsumptionKwh = parseFloat(rainyLoadInput.value) || 13.0;
 
     processForecastData();
     renderAllViews();
