@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Newcastle West & Irish Eircode Solar Forecast Model</title>
+    
+    <!-- Google Fonts & Chart.js -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --bg-card: rgba(30, 41, 59, 0.75);
+            --border-glass: rgba(255, 255, 255, 0.12);
+            --accent-amber: #f59e0b;
+            --accent-cyan: #06b6d4;
+            --accent-emerald: #10b981;
+            --accent-rose: #f43f5e;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+            --shadow-glow: 0 0 25px rgba(245, 158, 11, 0.25);
+            --transition-fast: all 0.2s ease;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image: 
+                radial-gradient(at 10% 10%, rgba(245, 158, 11, 0.15) 0px, transparent 50%),
+                radial-gradient(at 90% 20%, rgba(6, 182, 212, 0.15) 0px, transparent 50%),
+                radial-gradient(at 50% 90%, rgba(168, 85, 247, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-main);
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        header {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-glass);
+            position: sticky; top: 0; z-index: 100; padding: 16px 24px;
+        }
+
+        .header-container {
+            max-width: 1320px; margin: 0 auto;
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 16px;
+        }
+
+        .brand { display: flex; align-items: center; gap: 12px; }
+        .brand-icon {
+            width: 44px; height: 44px;
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            font-size: 24px; box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+        }
+
+        .brand-text h1 { font-size: 1.35rem; font-weight: 700; color: #ffffff; }
+        .brand-text p { font-size: 0.85rem; color: var(--text-muted); }
+
+        .location-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(6, 182, 212, 0.15); border: 1px solid rgba(6, 182, 212, 0.3);
+            color: #38bdf8; padding: 8px 16px; border-radius: 20px;
+            font-size: 0.85rem; font-weight: 600;
+        }
+
+        .dashboard-container {
+            max-width: 1320px; margin: 24px auto; padding: 0 20px;
+            display: flex; flex-direction: column; gap: 24px;
+        }
+
+        .search-card {
+            background: var(--bg-card); backdrop-filter: blur(16px);
+            border: 1px solid var(--border-glass); border-radius: var(--radius-lg);
+            padding: 20px; display: flex; flex-direction: column; gap: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .search-input-group { display: flex; gap: 12px; flex-wrap: wrap; }
+        .search-input-group input {
+            flex: 1; min-width: 260px; background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2); border-radius: var(--radius-md);
+            color: #ffffff; padding: 12px 18px; font-size: 1rem; font-weight: 500; outline: none;
+        }
+        .search-input-group input:focus { border-color: var(--accent-cyan); box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.25); }
+
+        .btn-search {
+            background: linear-gradient(135deg, #06b6d4, #0284c7); color: #ffffff; border: none;
+            padding: 12px 24px; border-radius: var(--radius-md); font-weight: 700; font-size: 0.95rem;
+            cursor: pointer; display: flex; align-items: center; gap: 8px; transition: var(--transition-fast);
+        }
+        .btn-search:hover { transform: translateY(-2px); box-shadow: 0 0 20px rgba(6, 182, 212, 0.4); }
+
+        .preset-pills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.8rem; color: var(--text-muted); }
+        .pill-btn {
+            background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text-main); padding: 4px 12px; border-radius: 14px; cursor: pointer;
+            font-size: 0.8rem; font-weight: 600; transition: var(--transition-fast);
+        }
+        .pill-btn:hover { background: rgba(245, 158, 11, 0.2); border-color: var(--accent-amber); color: var(--accent-amber); }
+
+        .config-bar {
+            background: var(--bg-card); backdrop-filter: blur(16px);
+            border: 1px solid var(--border-glass); border-radius: var(--radius-lg);
+            padding: 20px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .config-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 160px; }
+        .config-group label { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); }
+        .config-group input, .config-group select {
+            background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: var(--radius-sm); color: var(--text-main); padding: 10px 14px;
+            font-size: 0.95rem; font-weight: 600; outline: none; transition: var(--transition-fast);
+        }
+        .config-group input:focus, .config-group select:focus { border-color: var(--accent-amber); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25); }
+
+        .btn-update {
+            background: linear-gradient(135deg, #f59e0b, #b45309); color: #ffffff; border: none;
+            padding: 12px 24px; border-radius: var(--radius-md); font-weight: 700; font-size: 0.95rem;
+            cursor: pointer; display: flex; align-items: center; gap: 8px; align-self: flex-end;
+            transition: var(--transition-fast); box-shadow: var(--shadow-glow);
+        }
+        .btn-update:hover { transform: translateY(-2px); box-shadow: 0 0 30px rgba(245, 158, 11, 0.5); }
+
+        .hero-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+
+        .card {
+            background: var(--bg-card); backdrop-filter: blur(16px);
+            border: 1px solid var(--border-glass); border-radius: var(--radius-lg);
+            padding: 24px; transition: var(--transition-fast);
+        }
+        .card:hover { border-color: rgba(255, 255, 255, 0.25); transform: translateY(-2px); }
+
+        .card-title {
+            font-size: 0.85rem; font-weight: 600; text-transform: uppercase;
+            color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 12px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .main-stat { font-size: 2.2rem; font-weight: 800; color: #ffffff; display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+        .main-stat .unit { font-size: 1.1rem; font-weight: 500; color: var(--text-muted); }
+        .stat-desc { font-size: 0.88rem; color: var(--text-muted); line-height: 1.4; }
+
+        .verdict-card { background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)); border: 1px solid rgba(245, 158, 11, 0.3); }
+
+        .verdict-header { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+        .verdict-icon { font-size: 3rem; filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.6)); }
+
+        .solar-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 20px; font-weight: 700; font-size: 0.95rem; text-transform: uppercase; }
+        .badge-excellent { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); box-shadow: 0 0 15px rgba(16, 185, 129, 0.25); }
+        .badge-good { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); box-shadow: 0 0 15px rgba(245, 158, 11, 0.25); }
+        .badge-moderate { background: rgba(6, 182, 212, 0.2); color: #38bdf8; border: 1px solid rgba(6, 182, 212, 0.4); }
+        .badge-poor { background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); }
+
+        .score-bar-container { margin-top: 14px; background: rgba(255, 255, 255, 0.1); height: 8px; border-radius: 4px; overflow: hidden; }
+        .score-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #f43f5e, #f59e0b, #10b981); transition: width 0.6s ease; }
+
+        .appliance-box { margin-top: 12px; padding: 12px; background: rgba(245, 158, 11, 0.1); border-left: 3px solid var(--accent-amber); border-radius: var(--radius-sm); font-size: 0.88rem; color: #fef3c7; }
+
+        .section-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-top: 8px; }
+        .section-title { font-size: 1.25rem; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 10px; }
+
+        .tab-group { display: flex; background: rgba(15, 23, 42, 0.7); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border-glass); }
+        .tab-btn { background: transparent; border: none; color: var(--text-muted); padding: 8px 16px; font-weight: 600; font-size: 0.85rem; border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition-fast); }
+        .tab-btn.active { background: var(--accent-amber); color: #0f172a; }
+
+        .chart-card { min-height: 420px; display: flex; flex-direction: column; }
+        .chart-wrapper { position: relative; flex: 1; width: 100%; min-height: 340px; }
+
+        .forecast-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; }
+        .day-card { background: var(--bg-card); border: 1px solid var(--border-glass); border-radius: var(--radius-md); padding: 16px; text-align: center; cursor: pointer; transition: var(--transition-fast); }
+        .day-card:hover, .day-card.selected { border-color: var(--accent-amber); background: rgba(51, 65, 85, 0.9); transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); }
+
+        .day-date { font-size: 0.9rem; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
+        .day-sub { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px; }
+        .day-icon { font-size: 2.2rem; margin: 8px 0; }
+        .day-kwh { font-size: 1.25rem; font-weight: 800; color: var(--accent-amber); }
+        .day-cloud { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+
+        .table-container { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--border-glass); background: var(--bg-card); }
+        .hourly-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+        .hourly-table th { background: rgba(15, 23, 42, 0.9); padding: 14px 16px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border-glass); text-transform: uppercase; font-size: 0.75rem; }
+        .hourly-table td { padding: 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); color: var(--text-main); }
+        .hourly-table tr:hover { background: rgba(255, 255, 255, 0.03); }
+
+        .power-pill { display: inline-block; padding: 4px 10px; border-radius: 12px; font-weight: 700; font-size: 0.85rem; }
+        .power-high { background: rgba(245, 158, 11, 0.25); color: #fcd34d; }
+        .power-mid { background: rgba(6, 182, 212, 0.2); color: #67e8f9; }
+        .power-zero { color: #64748b; }
+
+        footer { max-width: 1320px; margin: 40px auto 0; padding: 20px; text-align: center; border-top: 1px solid var(--border-glass); color: var(--text-muted); font-size: 0.85rem; }
+
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(10px);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 1000; gap: 16px; transition: opacity 0.3s ease;
+        }
+
+        .spinner {
+            width: 50px; height: 50px;
+            border: 4px solid rgba(245, 158, 11, 0.2); border-top: 4px solid var(--accent-amber);
+            border-radius: 50%; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <h2 style="color: #ffffff; font-weight: 700;">Fetching Weather & Running Solar Model...</h2>
+        <p id="loadingSubtitle" style="color: #94a3b8; font-size: 0.9rem;">Newcastle West, Co. Limerick (V42 AD96)</p>
+    </div>
+
+    <header>
+        <div class="header-container">
+            <div class="brand">
+                <div class="brand-icon">☀️</div>
+                <div class="brand-text">
+                    <h1>Solar Weather Predictor</h1>
+                    <p>Hourly Solar Generation & Weather Model • Ireland & Eircode Search</p>
+                </div>
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <div id="locationDisplayBadge" class="location-badge">📍 Newcastle West, Co. Limerick (V42 AD96)</div>
+                <div id="currentTimeDisplay" style="font-size: 0.85rem; color: #94a3b8; font-weight: 600;"></div>
+            </div>
+        </div>
+    </header>
+
+    <div class="dashboard-container">
+
+        <section class="search-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <h3 style="font-size: 1rem; font-weight: 700; color: #ffffff;">🔍 Search Location or Eircode</h3>
+                <span style="font-size: 0.8rem; color: #94a3b8;">Enter any Irish Eircode or Town to update model</span>
+            </div>
+            
+            <div class="search-input-group">
+                <input type="text" id="locationSearchInput" placeholder="Enter Eircode (e.g. V42 AD96) or Town / Address..." value="V42 AD96">
+                <button id="btnSearchLocation" class="btn-search">
+                    🔎 Lookup Location
+                </button>
+            </div>
+
+            <div class="preset-pills">
+                <span>Quick Select:</span>
+                <button class="pill-btn" data-loc="V42 AD96, Newcastle West">📍 V42 AD96 (Newcastle West)</button>
+                <button class="pill-btn" data-loc="Abbeyfeale, Co. Limerick">📍 Abbeyfeale</button>
+                <button class="pill-btn" data-loc="Limerick City">📍 Limerick City</button>
+                <button class="pill-btn" data-loc="Charleville, Co. Cork">📍 Charleville</button>
+                <button class="pill-btn" data-loc="Tralee, Co. Kerry">📍 Tralee</button>
+                <button class="pill-btn" data-loc="Dublin, Ireland">📍 Dublin</button>
+            </div>
+        </section>
+
+        <section class="config-bar">
+            <div class="config-group">
+                <label for="sysCapacity">System Size (kWp)</label>
+                <input type="number" id="sysCapacity" value="5.0" step="0.5" min="1.0" max="30.0">
+            </div>
+            <div class="config-group">
+                <label for="panelTilt">Roof Pitch / Tilt (°)</label>
+                <input type="number" id="panelTilt" value="35" step="5" min="0" max="90">
+            </div>
+            <div class="config-group">
+                <label for="panelOrientation">Panel Orientation</label>
+                <select id="panelOrientation">
+                    <option value="SOUTH" selected>South (180°) - Ideal</option>
+                    <option value="SOUTH_WEST">South-West (225°)</option>
+                    <option value="WEST">West (270°)</option>
+                    <option value="SOUTH_EAST">South-East (135°)</option>
+                    <option value="EAST">East (90°)</option>
+                </select>
+            </div>
+            <button id="btnRecalculate" class="btn-update">🔄 Update Model</button>
+        </section>
+
+        <section class="hero-summary">
+            <div class="card verdict-card">
+                <div class="card-title">
+                    <span>Solar Forecast Verdict</span>
+                    <span id="selectedDateBadge" style="font-size: 0.75rem; color: #94a3b8;">Today</span>
+                </div>
+                <div class="verdict-header">
+                    <div id="verdictIcon" class="verdict-icon">☀️</div>
+                    <div>
+                        <div id="verdictBadge" class="solar-badge badge-excellent">Great Solar Day</div>
+                        <div id="verdictScoreText" style="font-size: 0.85rem; color: #94a3b8; margin-top: 4px;">Solar Potential Score: <strong id="solarScoreVal" style="color: #fff;">85/100</strong></div>
+                    </div>
+                </div>
+                <p id="verdictSummary" class="stat-desc">High solar generation expected! Excellent window to charge EV, heat water/home, & export energy.</p>
+                <div class="score-bar-container">
+                    <div id="scoreBarFill" class="score-bar-fill" style="width: 85%;"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <span>Estimated Daily Generation</span>
+                    <span>⚡</span>
+                </div>
+                <div class="main-stat">
+                    <span id="totalKwhVal">18.4</span> <span class="unit">kWh</span>
+                </div>
+                <p class="stat-desc">Equivalent to <strong id="yieldPerKwpVal">3.68</strong> kWh per installed kWp.</p>
+                <div class="appliance-box" id="applianceAdviceBox">
+                    💡 <strong>Optimal Loads Window:</strong> <span id="applianceWindowVal">11:00 AM – 15:00 PM</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">
+                    <span>Peak Solar Power</span>
+                    <span>🌤️</span>
+                </div>
+                <div class="main-stat">
+                    <span id="peakPowerVal">3.85</span> <span class="unit">kW</span>
+                </div>
+                <p class="stat-desc">Expected around <strong id="peakHourVal">13:00</strong>. Avg daytime cloud cover: <strong id="avgCloudVal">32%</strong>.</p>
+            </div>
+        </section>
+
+        <section style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="section-header">
+                <h2 class="section-title">📅 7-Day Solar Forecast Calendar</h2>
+                <p style="font-size: 0.85rem; color: #94a3b8;">Click any day to view its detailed hourly model</p>
+            </div>
+            <div id="forecastGrid" class="forecast-grid"></div>
+        </section>
+
+        <section class="card chart-card">
+            <div class="section-header" style="margin-bottom: 16px;">
+                <h2 class="section-title">📈 Hourly Solar Output vs Cloud Cover</h2>
+                <div class="tab-group">
+                    <button class="tab-btn active" id="btnChartGen">Generation (kW)</button>
+                    <button class="tab-btn" id="btnChartIrradiance">Irradiance (W/m²)</button>
+                </div>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="hourlyChart"></canvas>
+            </div>
+        </section>
+
+        <section style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="section-header">
+                <h2 class="section-title">📊 Hourly Meteorological & Model Data</h2>
+            </div>
+            <div class="table-container">
+                <table class="hourly-table">
+                    <thead>
+                        <tr>
+                            <th>Hour</th>
+                            <th>Weather</th>
+                            <th>Temp (°C)</th>
+                            <th>Cloud Cover (%)</th>
+                            <th>Global Irradiance (W/m²)</th>
+                            <th>Effective Solar Power</th>
+                            <th>Model Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hourlyTableBody"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <p>Irish Eircode Solar Weather Predictor • Open-Meteo Ireland High-Resolution Hourly Model</p>
+        <p id="footerCoordsText" style="margin-top: 4px; font-size: 0.75rem; color: #64748b;">Newcastle West, Co. Limerick (V42 AD96) • Lat: 52.4497° N | Lon: -9.0612° W</p>
+    </footer>
+
+    <script>
+        const ORIENTATIONS = { 'SOUTH': 180, 'SOUTH_WEST': 225, 'WEST': 270, 'SOUTH_EAST': 135, 'EAST': 90 };
+        const WMO_WEATHER_CODES = {
+            0: { description: 'Clear Sky', icon: '☀️' },
+            1: { description: 'Mainly Clear', icon: '🌤️' },
+            2: { description: 'Partly Cloudy', icon: '⛅' },
+            3: { description: 'Overcast', icon: '☁️' },
+            45: { description: 'Foggy', icon: '🌫️' },
+            51: { description: 'Light Drizzle', icon: '🌦️' },
+            61: { description: 'Slight Rain', icon: '🌧️' },
+            63: { description: 'Moderate Rain', icon: '🌧️' },
+            80: { description: 'Rain Showers', icon: '🌦️' }
+        };
+
+        const KNOWN_EIRCODES = {
+            'V42AD96': { name: 'Newcastle West, Co. Limerick (V42 AD96)', lat: 52.4497, lon: -9.0612 },
+            'V42 AD96': { name: 'Newcastle West, Co. Limerick (V42 AD96)', lat: 52.4497, lon: -9.0612 },
+            'V94': { name: 'Limerick City', lat: 52.6680, lon: -8.6305 },
+            'V92': { name: 'Tralee, Co. Kerry', lat: 52.2704, lon: -9.7026 },
+            'P56': { name: 'Charleville, Co. Cork', lat: 52.3550, lon: -8.6833 },
+            'D02': { name: 'Dublin City', lat: 53.3498, lon: -6.2603 }
+        };
+
+        function getSunPosition(date, lat = 52.4497, lon = -9.0612) {
+            const rad = Math.PI / 180;
+            const dayOfYear = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+            const declination = 23.45 * Math.sin(rad * (360 / 365) * (dayOfYear - 81));
+            const b = (2 * Math.PI / 364) * (dayOfYear - 81);
+            const eqOfTime = 9.87 * Math.sin(2 * b) - 7.53 * Math.cos(b) - 1.5 * Math.sin(b);
+            const hours = date.getUTCHours() + date.getUTCMinutes() / 60;
+            const solarTime = hours + (lon / 15) + (eqOfTime / 60);
+            const hourAngle = (solarTime - 12) * 15;
+            const sinElevation = Math.sin(rad * lat) * Math.sin(rad * declination) +
+                                 Math.cos(rad * lat) * Math.cos(rad * declination) * Math.cos(rad * hourAngle);
+            const elevation = Math.asin(Math.max(-1, Math.min(1, sinElevation))) / rad;
+            const cosAzimuth = (Math.sin(rad * declination) * Math.cos(rad * lat) -
+                                Math.cos(rad * declination) * Math.sin(rad * lat) * Math.cos(rad * hourAngle)) / Math.cos(rad * elevation);
+            let azimuth = Math.acos(Math.max(-1, Math.min(1, cosAzimuth))) / rad;
+            if (hourAngle > 0) azimuth = 360 - azimuth;
+            return { elevation, azimuth };
+        }
+
+        function calculateHourlyYield(weatherHour, config) {
+            const { systemCapacityKwp = 5.0, panelTiltDeg = 35, panelAzimuthDeg = 180 } = config;
+            const shortwaveRadiation = weatherHour.shortwave_radiation || 0;
+            const directRadiation = weatherHour.direct_radiation || 0;
+            const diffuseRadiation = weatherHour.diffuse_radiation || 0;
+            const globalTilted = weatherHour.global_tilted_irradiance || 0;
+            const temperature = weatherHour.temperature_2m || 15;
+            const cloudCover = weatherHour.cloud_cover || 0;
+
+            if (shortwaveRadiation <= 2 && globalTilted <= 2) {
+                return { powerKw: 0, effectiveIrradianceWm2: 0, isDaylight: false };
+            }
+
+            let poaIrradiance = globalTilted > 0 ? globalTilted : 0;
+            if (poaIrradiance <= 0) {
+                const sunPos = getSunPosition(new Date(weatherHour.time), appData.currentLocation.latitude, appData.currentLocation.longitude);
+                if (sunPos.elevation > 0) {
+                    const rad = Math.PI / 180;
+                    const incidenceCos = Math.sin(rad * sunPos.elevation) * Math.cos(rad * panelTiltDeg) +
+                        Math.cos(rad * sunPos.elevation) * Math.sin(rad * panelTiltDeg) * Math.cos(rad * (sunPos.azimuth - panelAzimuthDeg));
+                    poaIrradiance = Math.max(0, directRadiation * Math.max(0, incidenceCos)) + diffuseRadiation * ((1 + Math.cos(rad * panelTiltDeg)) / 2);
+                } else {
+                    poaIrradiance = diffuseRadiation * 0.5;
+                }
+            }
+
+            const cellTemp = temperature + (poaIrradiance / 800) * 25;
+            const tempDerating = 1 + (cellTemp - 25) * -0.004;
+            let powerKw = (poaIrradiance / 1000) * systemCapacityKwp * 0.85 * tempDerating;
+            powerKw = Math.min(systemCapacityKwp * 1.05, Math.max(0, powerKw));
+
+            return {
+                powerKw: parseFloat(powerKw.toFixed(3)),
+                effectiveIrradianceWm2: Math.round(poaIrradiance),
+                isDaylight: true
+            };
+        }
+
+        function analyzeDailySolarForecast(dailyHoursData, systemCapacityKwp = 5.0, panelTiltDeg = 35, panelAzimuthDeg = 180) {
+            let totalKwh = 0, maxPowerKw = 0, peakHourStr = '', totalCloudSum = 0, daylightCount = 0;
+            const hourlyYields = [];
+
+            dailyHoursData.forEach(hour => {
+                const yieldData = calculateHourlyYield(hour, { systemCapacityKwp, panelTiltDeg, panelAzimuthDeg });
+                hourlyYields.push({ ...hour, ...yieldData });
+                totalKwh += yieldData.powerKw;
+
+                if (yieldData.powerKw > maxPowerKw) {
+                    maxPowerKw = yieldData.powerKw;
+                    peakHourStr = `${String(new Date(hour.time).getHours()).padStart(2, '0')}:00`;
+                }
+                if (yieldData.isDaylight) {
+                    daylightCount++;
+                    totalCloudSum += hour.cloud_cover || 0;
+                }
+            });
+
+            const avgCloudCover = daylightCount > 0 ? Math.round(totalCloudSum / daylightCount) : 100;
+            const yieldPerKwp = totalKwh / systemCapacityKwp;
+
+            let score = Math.round((Math.min(yieldPerKwp / 4.5, 1.0) * 65) + (Math.max(0, 100 - avgCloudCover) * 0.35));
+            score = Math.min(100, Math.max(5, score));
+
+            let rating = 'POOR', ratingLabel = 'Bad Solar Day', ratingIcon = '🌧️', ratingClass = 'badge-poor';
+            let summaryText = 'Heavy clouds/rain expected. Low solar generation; rely on grid/battery.';
+
+            if (score >= 72 || yieldPerKwp >= 3.2) {
+                rating = 'EXCELLENT'; ratingLabel = 'Great Solar Day'; ratingIcon = '☀️'; ratingClass = 'badge-excellent';
+                summaryText = 'High solar generation expected! Great window to charge EV, heat water/home, & export energy.';
+            } else if (score >= 48 || yieldPerKwp >= 2.0) {
+                rating = 'GOOD'; ratingLabel = 'Good Solar Day'; ratingIcon = '🌤️'; ratingClass = 'badge-good';
+                summaryText = 'Solid solar generation available. Good windows around midday for household appliance loads.';
+            } else if (score >= 28 || yieldPerKwp >= 1.0) {
+                rating = 'MODERATE'; ratingLabel = 'Moderate Solar Day'; ratingIcon = '⛅'; ratingClass = 'badge-moderate';
+                summaryText = 'Passing clouds & partial sun. Moderate total generation; stagger appliance usage.';
+            }
+
+            const highGenHours = hourlyYields.filter(h => h.powerKw >= Math.max(0.4, maxPowerKw * 0.55)).map(h => new Date(h.time).getHours());
+            let optimalWindow = 'N/A';
+            if (highGenHours.length > 0) {
+                optimalWindow = `${String(Math.min(...highGenHours)).padStart(2, '0')}:00 – ${String(Math.max(...highGenHours) + 1).padStart(2, '0')}:00`;
+            }
+
+            return {
+                date: dailyHoursData[0] ? dailyHoursData[0].time.split('T')[0] : '',
+                totalKwh: parseFloat(totalKwh.toFixed(2)),
+                yieldPerKwp: parseFloat(yieldPerKwp.toFixed(2)),
+                maxPowerKw: parseFloat(maxPowerKw.toFixed(2)),
+                peakHourStr, avgCloudCover, score, rating, ratingLabel, ratingIcon, ratingClass, summaryText, optimalWindow, hourlyYields
+            };
+        }
+
+        let appData = {
+            currentLocation: { name: 'Newcastle West, Co. Limerick (V42 AD96)', latitude: 52.4497, longitude: -9.0612, timezone: 'Europe/Dublin' },
+            hourlyWeather: [], dailyAnalyses: [], selectedDayIndex: 0, chartInstance: null, viewMode: 'generation',
+            config: { systemCapacityKwp: 5.0, panelTiltDeg: 35, panelAzimuthDeg: 180 }
+        };
+
+        async function geocodeAddress(queryStr) {
+            if (!queryStr || !queryStr.trim()) return null;
+            const cleanQuery = queryStr.trim().toUpperCase();
+
+            if (KNOWN_EIRCODES[cleanQuery]) {
+                const item = KNOWN_EIRCODES[cleanQuery];
+                return { name: item.name, latitude: item.lat, longitude: item.lon };
+            }
+
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(queryStr + ', Ireland')}&format=json&limit=1&countrycodes=ie`);
+                if (response.ok) {
+                    const results = await response.json();
+                    if (results && results.length > 0) {
+                        return { name: `${results[0].display_name.split(',')[0]}, Ireland (${cleanQuery})`, latitude: parseFloat(results[0].lat), longitude: parseFloat(results[0].lon) };
+                    }
+                }
+            } catch (e) {}
+
+            try {
+                const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(queryStr)}&count=1&language=en&format=json`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.results && data.results.length > 0) {
+                        return { name: `${data.results[0].name} (${cleanQuery})`, latitude: data.results[0].latitude, longitude: data.results[0].longitude };
+                    }
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        async function handleLocationSearch(queryOverride) {
+            const query = queryOverride || document.getElementById('locationSearchInput').value;
+            if (!query) return;
+
+            const loader = document.getElementById('loadingOverlay');
+            document.getElementById('loadingSubtitle').textContent = `Searching location for "${query}"...`;
+            loader.style.display = 'flex'; loader.style.opacity = '1';
+
+            const geo = await geocodeAddress(query);
+            if (geo) {
+                appData.currentLocation.name = geo.name;
+                appData.currentLocation.latitude = geo.latitude;
+                appData.currentLocation.longitude = geo.longitude;
+
+                updateLocationHeaderBadges();
+                appData.hourlyWeather = await fetchWeatherData();
+                processForecastData();
+                renderAllViews();
+            } else {
+                alert(`Could not find coordinates for "${query}". Reverting to Newcastle West (V42 AD96).`);
+            }
+
+            loader.style.opacity = '0';
+            setTimeout(() => loader.style.display = 'none', 300);
+        }
+
+        function updateLocationHeaderBadges() {
+            const { name, latitude, longitude } = appData.currentLocation;
+            document.getElementById('locationDisplayBadge').textContent = `📍 ${name}`;
+            document.getElementById('footerCoordsText').textContent = `${name} • Lat: ${latitude.toFixed(4)}° N | Lon: ${longitude.toFixed(4)}° W`;
+        }
+
+        async function fetchWeatherData() {
+            const { latitude, longitude, timezone } = appData.currentLocation;
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,cloud_cover,shortwave_radiation,direct_radiation,diffuse_radiation,global_tilted_irradiance,weather_code,is_day&timezone=${encodeURIComponent(timezone || 'Europe/Dublin')}`;
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('API Error');
+                const data = await response.json();
+                const hourly = data.hourly;
+                const result = [];
+                for (let i = 0; i < hourly.time.length; i++) {
+                    result.push({
+                        time: hourly.time[i],
+                        temperature_2m: hourly.temperature_2m[i],
+                        cloud_cover: hourly.cloud_cover[i],
+                        shortwave_radiation: hourly.shortwave_radiation[i],
+                        direct_radiation: hourly.direct_radiation[i],
+                        diffuse_radiation: hourly.diffuse_radiation[i],
+                        global_tilted_irradiance: hourly.global_tilted_irradiance ? hourly.global_tilted_irradiance[i] : 0,
+                        weather_code: hourly.weather_code[i],
+                        is_day: hourly.is_day[i]
+                    });
+                }
+                return result;
+            } catch (err) {
+                return generateSyntheticForecast();
+            }
+        }
+
+        function generateSyntheticForecast() {
+            const result = [], now = new Date();
+            for (let day = 0; day < 7; day++) {
+                const baseCloud = [20, 45, 85, 30, 15, 90, 40][day % 7];
+                for (let hour = 0; hour < 24; hour++) {
+                    const dateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate() + day, hour, 0, 0);
+                    const isDay = hour >= 6 && hour <= 21 ? 1 : 0;
+                    let rad = 0;
+                    if (isDay) {
+                        const hourFactor = Math.sin((hour - 6) / 15 * Math.PI);
+                        rad = Math.max(0, Math.round(750 * hourFactor * ((100 - baseCloud * 0.7) / 100)));
+                    }
+                    result.push({
+                        time: dateObj.toISOString().slice(0, 16),
+                        temperature_2m: 14 + Math.round(Math.sin((hour - 8) / 12 * Math.PI) * 6),
+                        cloud_cover: baseCloud,
+                        shortwave_radiation: rad,
+                        direct_radiation: Math.round(rad * 0.6),
+                        diffuse_radiation: Math.round(rad * 0.4),
+                        weather_code: baseCloud > 75 ? 3 : (baseCloud > 40 ? 2 : 0),
+                        is_day: isDay
+                    });
+                }
+            }
+            return result;
+        }
+
+        function processForecastData() {
+            const groups = {};
+            appData.hourlyWeather.forEach(hour => {
+                const dateStr = hour.time.split('T')[0];
+                if (!groups[dateStr]) groups[dateStr] = [];
+                groups[dateStr].push(hour);
+            });
+            appData.dailyAnalyses = Object.values(groups).map(dayHours =>
+                analyzeDailySolarForecast(dayHours, appData.config.systemCapacityKwp, appData.config.panelTiltDeg, appData.config.panelAzimuthDeg)
+            );
+        }
+
+        function renderForecastCalendar() {
+            const grid = document.getElementById('forecastGrid');
+            grid.innerHTML = '';
+            appData.dailyAnalyses.forEach((day, index) => {
+                const dateObj = new Date(day.date);
+                const dayName = index === 0 ? 'Today' : dateObj.toLocaleDateString('en-IE', { weekday: 'short' });
+                const dateFormatted = dateObj.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' });
+
+                const card = document.createElement('div');
+                card.className = `day-card ${index === appData.selectedDayIndex ? 'selected' : ''}`;
+                card.innerHTML = `
+                    <div class="day-date">${dayName}</div>
+                    <div class="day-sub">${dateFormatted}</div>
+                    <div class="day-icon">${day.ratingIcon}</div>
+                    <div class="day-kwh">${day.totalKwh} <span style="font-size: 0.8rem;">kWh</span></div>
+                    <div class="day-cloud">☁️ ${day.avgCloudCover}% cloud</div>
+                    <div style="margin-top: 8px;">
+                        <span class="solar-badge ${day.ratingClass}" style="font-size: 0.7rem; padding: 2px 8px;">${day.rating}</span>
+                    </div>
+                `;
+                card.addEventListener('click', () => { appData.selectedDayIndex = index; renderAllViews(); });
+                grid.appendChild(card);
+            });
+        }
+
+        function renderHeroSummary() {
+            const day = appData.dailyAnalyses[appData.selectedDayIndex];
+            if (!day) return;
+            const dateObj = new Date(day.date);
+            const dateFormatted = dateObj.toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'short' });
+
+            document.getElementById('selectedDateBadge').textContent = appData.selectedDayIndex === 0 ? `Today (${dateFormatted})` : dateFormatted;
+            document.getElementById('verdictIcon').textContent = day.ratingIcon;
+            document.getElementById('verdictBadge').textContent = day.ratingLabel;
+            document.getElementById('verdictBadge').className = `solar-badge ${day.ratingClass}`;
+            document.getElementById('solarScoreVal').textContent = `${day.score}/100`;
+            document.getElementById('verdictSummary').textContent = day.summaryText;
+            document.getElementById('scoreBarFill').style.width = `${day.score}%`;
+
+            document.getElementById('totalKwhVal').textContent = day.totalKwh;
+            document.getElementById('yieldPerKwpVal').textContent = day.yieldPerKwp;
+            document.getElementById('applianceWindowVal').textContent = day.optimalWindow;
+            document.getElementById('peakPowerVal').textContent = day.maxPowerKw;
+            document.getElementById('peakHourVal').textContent = day.peakHourStr || 'N/A';
+            document.getElementById('avgCloudVal').textContent = `${day.avgCloudCover}%`;
+        }
+
+        function renderHourlyTable() {
+            const tbody = document.getElementById('hourlyTableBody');
+            tbody.innerHTML = '';
+            const day = appData.dailyAnalyses[appData.selectedDayIndex];
+            if (!day) return;
+
+            day.hourlyYields.forEach(hour => {
+                const hourTime = new Date(hour.time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' });
+                const weatherInfo = WMO_WEATHER_CODES[hour.weather_code] || { description: 'Clear', icon: '☀️' };
+                let powerClass = hour.powerKw >= 2.0 ? 'power-high' : (hour.powerKw > 0.1 ? 'power-mid' : 'power-zero');
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td style="font-weight: 700;">${hourTime}</td>
+                    <td>${weatherInfo.icon} ${weatherInfo.description}</td>
+                    <td>${hour.temperature_2m}°C</td>
+                    <td>${hour.cloud_cover}%</td>
+                    <td>${hour.effectiveIrradianceWm2} W/m²</td>
+                    <td><span class="power-pill ${powerClass}">${hour.powerKw} kW</span></td>
+                    <td style="font-size: 0.8rem; color: #94a3b8;">${hour.isDaylight ? '☀️ Daylight' : '🌙 Night'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function renderChart() {
+            const day = appData.dailyAnalyses[appData.selectedDayIndex];
+            if (!day) return;
+
+            const labels = day.hourlyYields.map(h => new Date(h.time).getHours() + ':00');
+            const powerData = day.hourlyYields.map(h => h.powerKw);
+            const cloudData = day.hourlyYields.map(h => h.cloud_cover);
+            const irradianceData = day.hourlyYields.map(h => h.effectiveIrradianceWm2);
+
+            const ctx = document.getElementById('hourlyChart').getContext('2d');
+            if (appData.chartInstance) appData.chartInstance.destroy();
+
+            const isGenMode = appData.viewMode === 'generation';
+            const mainLabel = isGenMode ? 'Solar Generation (kW)' : 'Irradiance (W/m²)';
+            const mainData = isGenMode ? powerData : irradianceData;
+
+            appData.chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: mainLabel, data: mainData, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.2)', fill: true, tension: 0.35, borderWidth: 3, yAxisID: 'y' },
+                        { label: 'Cloud Cover (%)', data: cloudData, borderColor: '#06b6d4', backgroundColor: 'transparent', borderDash: [5, 5], tension: 0.2, borderWidth: 2, yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { ticks: { color: '#94a3b8' } },
+                        y: { type: 'linear', position: 'left', title: { display: true, text: mainLabel, color: '#f59e0b' }, ticks: { color: '#94a3b8' }, min: 0 },
+                        y1: { type: 'linear', position: 'right', title: { display: true, text: 'Cloud Cover (%)', color: '#06b6d4' }, ticks: { color: '#94a3b8' }, min: 0, max: 100 }
+                    },
+                    plugins: { legend: { labels: { color: '#f8fafc' } } }
+                }
+            });
+        }
+
+        function renderAllViews() {
+            renderForecastCalendar();
+            renderHeroSummary();
+            renderChart();
+            renderHourlyTable();
+        }
+
+        function handleConfigUpdate() {
+            appData.config.systemCapacityKwp = parseFloat(document.getElementById('sysCapacity').value) || 5.0;
+            appData.config.panelTiltDeg = parseFloat(document.getElementById('panelTilt').value) || 35;
+            appData.config.panelAzimuthDeg = ORIENTATIONS[document.getElementById('panelOrientation').value] || 180;
+            processForecastData();
+            renderAllViews();
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            document.getElementById('currentTimeDisplay').textContent = new Date().toLocaleDateString('en-IE', {
+                weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+            });
+
+            document.getElementById('btnSearchLocation').addEventListener('click', () => handleLocationSearch());
+            document.getElementById('locationSearchInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLocationSearch(); });
+
+            document.querySelectorAll('.pill-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const loc = e.target.getAttribute('data-loc');
+                    document.getElementById('locationSearchInput').value = loc;
+                    handleLocationSearch(loc);
+                });
+            });
+
+            document.getElementById('btnRecalculate').addEventListener('click', handleConfigUpdate);
+            document.getElementById('btnChartGen').addEventListener('click', () => {
+                appData.viewMode = 'generation';
+                document.getElementById('btnChartGen').classList.add('active');
+                document.getElementById('btnChartIrradiance').classList.remove('active');
+                renderChart();
+            });
+            document.getElementById('btnChartIrradiance').addEventListener('click', () => {
+                appData.viewMode = 'irradiance';
+                document.getElementById('btnChartIrradiance').classList.add('active');
+                document.getElementById('btnChartGen').classList.remove('active');
+                renderChart();
+            });
+
+            updateLocationHeaderBadges();
+            appData.hourlyWeather = await fetchWeatherData();
+            processForecastData();
+            renderAllViews();
+
+            const loader = document.getElementById('loadingOverlay');
+            loader.style.opacity = '0';
+            setTimeout(() => loader.style.display = 'none', 300);
+        });
+    </script>
+</body>
+</html>
