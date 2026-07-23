@@ -22,9 +22,12 @@ let appData = {
     chartInstance: null,
     viewMode: 'generation',
     config: {
-        systemCapacityKwp: 5.0,
+        systemCapacityKwp: 7.9,        // Default 7.9 kW (18 panels)
         panelTiltDeg: 35,
-        panelAzimuthDeg: 180
+        panelAzimuthDeg: 180,
+        exportTariffCent: 18.5,       // 18.5c per kWh microgen export rate
+        sunnyDayConsumptionKwh: 10.0, // 10 kWh daily load on sunny days
+        rainyDayConsumptionKwh: 13.0   // 12-13 kWh daily load on rainy days
     }
 };
 
@@ -42,7 +45,6 @@ const KNOWN_EIRCODES = {
     'DUBLIN': { name: 'Dublin City', lat: 53.3498, lon: -6.2603 }
 };
 
-// Routing Key fallback (ONLY used if user types a 3-character prefix like "V94")
 const ROUTING_KEY_FALLBACKS = {
     'V94': { name: 'Limerick Region (V94)', lat: 52.6680, lon: -8.6305 },
     'V92': { name: 'Tralee Region (V92)', lat: 52.2704, lon: -9.7026 },
@@ -63,6 +65,9 @@ const btnSearchLocation = document.getElementById('btnSearchLocation');
 const sysCapacityInput = document.getElementById('sysCapacity');
 const panelTiltInput = document.getElementById('panelTilt');
 const panelOrientationSelect = document.getElementById('panelOrientation');
+const exportTariffInput = document.getElementById('exportTariff');
+const sunnyLoadInput = document.getElementById('sunnyLoad');
+const rainyLoadInput = document.getElementById('rainyLoad');
 const btnRecalculate = document.getElementById('btnRecalculate');
 const currentTimeDisplay = document.getElementById('currentTimeDisplay');
 
@@ -80,6 +85,12 @@ const peakPowerVal = document.getElementById('peakPowerVal');
 const peakHourVal = document.getElementById('peakHourVal');
 const avgCloudVal = document.getElementById('avgCloudVal');
 
+// Financial DOM Elements
+const exportEarningsVal = document.getElementById('exportEarningsVal');
+const exportedKwhVal = document.getElementById('exportedKwhVal');
+const selfConsumedKwhVal = document.getElementById('selfConsumedKwhVal');
+const totalFinancialVal = document.getElementById('totalFinancialVal');
+
 const forecastGrid = document.getElementById('forecastGrid');
 const hourlyTableBody = document.getElementById('hourlyTableBody');
 const btnChartGen = document.getElementById('btnChartGen');
@@ -94,76 +105,41 @@ async function geocodeAddress(queryStr) {
     const uppercaseQuery = rawQuery.toUpperCase();
     const compactEircode = uppercaseQuery.replace(/\s+/g, '');
 
-    // 1. Check exact Eircode / Location in database
-    if (KNOWN_EIRCODES[compactEircode]) {
-        const item = KNOWN_EIRCODES[compactEircode];
-        return { name: item.name, latitude: item.lat, longitude: item.lon };
-    }
-    if (KNOWN_EIRCODES[uppercaseQuery]) {
-        const item = KNOWN_EIRCODES[uppercaseQuery];
-        return { name: item.name, latitude: item.lat, longitude: item.lon };
-    }
+    if (KNOWN_EIRCODES[compactEircode]) return KNOWN_EIRCODES[compactEircode];
+    if (KNOWN_EIRCODES[uppercaseQuery]) return KNOWN_EIRCODES[uppercaseQuery];
 
-    // Check key town words in query (e.g. Caherlevoy, Mountcollins)
     if (uppercaseQuery.includes('CAHERLEVOY') || uppercaseQuery.includes('MOUNTCOLLINS')) {
-        return {
-            name: `Caherlevoy, Mountcollins, Co. Limerick (${rawQuery})`,
-            latitude: 52.3325,
-            longitude: -9.1842
-        };
+        return { name: `Caherlevoy, Mountcollins, Co. Limerick (${rawQuery})`, lat: 52.3325, lon: -9.1842 };
     }
 
-    // 2. High-Precision Nominatim Geocoding API for full address/Eircode
     try {
         const formattedEircode = compactEircode.length === 7 ? `${compactEircode.slice(0, 3)} ${compactEircode.slice(3)}` : rawQuery;
-        const encoded = encodeURIComponent(`${formattedEircode}, Ireland`);
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1&countrycodes=ie`);
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(formattedEircode + ', Ireland')}&format=json&limit=1&countrycodes=ie`);
         if (response.ok) {
             const results = await response.json();
             if (results && results.length > 0) {
-                const item = results[0];
-                const placeName = item.display_name.split(',').slice(0, 3).join(', ');
-                return {
-                    name: `${placeName} (${formattedEircode})`,
-                    latitude: parseFloat(item.lat),
-                    longitude: parseFloat(item.lon)
-                };
+                const placeName = results[0].display_name.split(',').slice(0, 3).join(', ');
+                return { name: `${placeName} (${formattedEircode})`, lat: parseFloat(results[0].lat), lon: parseFloat(results[0].lon) };
             }
         }
-    } catch (e) {
-        console.warn('Nominatim geocode attempt failed:', e);
-    }
+    } catch (e) {}
 
-    // 3. Open-Meteo Geocoding API Search
     try {
         const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(rawQuery)}&count=1&language=en&format=json`);
         if (response.ok) {
             const data = await response.json();
             if (data.results && data.results.length > 0) {
-                const item = data.results[0];
-                return {
-                    name: `${item.name}${item.admin1 ? ', Co. ' + item.admin1 : ''} (${rawQuery})`,
-                    latitude: item.latitude,
-                    longitude: item.longitude
-                };
+                return { name: `${data.results[0].name} (${rawQuery})`, lat: data.results[0].latitude, lon: data.results[0].longitude };
             }
         }
-    } catch (e) {
-        console.warn('Open-Meteo geocode failed:', e);
-    }
+    } catch (e) {}
 
-    // 4. Coarse Routing Key fallback ONLY if user entered a 3-character prefix (e.g. "V94")
     if (compactEircode.length === 3 && ROUTING_KEY_FALLBACKS[compactEircode]) {
-        const item = ROUTING_KEY_FALLBACKS[compactEircode];
-        return { name: item.name, latitude: item.lat, longitude: item.lon };
+        return ROUTING_KEY_FALLBACKS[compactEircode];
     }
-
     return null;
 }
 
-/**
- * Perform Location Search and reload model
- */
 async function handleLocationSearch(queryOverride) {
     const query = queryOverride || locationSearchInput.value;
     if (!query) return;
@@ -173,8 +149,8 @@ async function handleLocationSearch(queryOverride) {
 
     if (geo) {
         appData.currentLocation.name = geo.name;
-        appData.currentLocation.latitude = geo.latitude;
-        appData.currentLocation.longitude = geo.longitude;
+        appData.currentLocation.latitude = geo.lat || geo.latitude;
+        appData.currentLocation.longitude = geo.lon || geo.longitude;
 
         updateLocationHeaderBadges();
         appData.hourlyWeather = await fetchWeatherData();
@@ -193,9 +169,6 @@ function updateLocationHeaderBadges() {
     footerCoordsText.textContent = `${name} • Coordinates: ${latitude.toFixed(4)}° N, ${longitude.toFixed(4)}° W`;
 }
 
-/**
- * Fetch Hourly Forecast Data for Current Location
- */
 async function fetchWeatherData() {
     const { latitude, longitude, timezone } = appData.currentLocation;
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,global_tilted_irradiance,sunshine_duration,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,sunshine_duration,shortwave_radiation_sum&timezone=${encodeURIComponent(timezone || 'Europe/Dublin')}`;
@@ -276,12 +249,16 @@ function processForecastData() {
     });
 
     appData.dailyAnalyses = Object.values(groups).map(dayHours => {
-        return analyzeDailySolarForecast(
-            dayHours,
-            appData.config.systemCapacityKwp,
-            appData.config.panelTiltDeg,
-            appData.config.panelAzimuthDeg
-        );
+        return analyzeDailySolarForecast(dayHours, {
+            systemCapacityKwp: appData.config.systemCapacityKwp,
+            panelTiltDeg: appData.config.panelTiltDeg,
+            panelAzimuthDeg: appData.config.panelAzimuthDeg,
+            exportTariffCent: appData.config.exportTariffCent,
+            sunnyDayConsumptionKwh: appData.config.sunnyDayConsumptionKwh,
+            rainyDayConsumptionKwh: appData.config.rainyDayConsumptionKwh,
+            latitude: appData.currentLocation.latitude,
+            longitude: appData.currentLocation.longitude
+        });
     });
 }
 
@@ -300,6 +277,9 @@ function renderForecastCalendar() {
             <div class="day-sub">${dateFormatted}</div>
             <div class="day-icon">${day.ratingIcon}</div>
             <div class="day-kwh">${day.totalKwh} <span style="font-size: 0.8rem;">kWh</span></div>
+            <div style="font-size: 0.82rem; font-weight: 700; color: #34d399; margin-top: 4px;">
+                💶 €${day.exportEarningsEuros.toFixed(2)} export
+            </div>
             <div class="day-cloud">☁️ ${day.avgCloudCover}% cloud</div>
             <div style="margin-top: 8px;">
                 <span class="solar-badge ${day.ratingClass}" style="font-size: 0.7rem; padding: 2px 8px;">${day.rating}</span>
@@ -338,6 +318,12 @@ function renderHeroSummary() {
     peakPowerVal.textContent = day.maxPowerKw;
     peakHourVal.textContent = day.peakHourStr || 'N/A';
     avgCloudVal.textContent = `${day.avgCloudCover}%`;
+
+    // Populate Export Earnings & Financial Cards
+    exportEarningsVal.textContent = day.exportEarningsEuros.toFixed(2);
+    exportedKwhVal.textContent = `${day.exportedKwh.toFixed(1)} kWh`;
+    selfConsumedKwhVal.textContent = `${day.selfConsumedKwh.toFixed(1)} kWh`;
+    totalFinancialVal.textContent = `€${day.totalFinancialValueEuros.toFixed(2)}`;
 }
 
 function renderHourlyTable() {
@@ -440,9 +426,12 @@ function renderAllViews() {
 }
 
 function handleConfigUpdate() {
-    appData.config.systemCapacityKwp = parseFloat(sysCapacityInput.value) || 5.0;
+    appData.config.systemCapacityKwp = parseFloat(sysCapacityInput.value) || 7.9;
     appData.config.panelTiltDeg = parseFloat(panelTiltInput.value) || 35;
     appData.config.panelAzimuthDeg = ORIENTATIONS[panelOrientationSelect.value] || 180;
+    appData.config.exportTariffCent = parseFloat(exportTariffInput.value) || 18.5;
+    appData.config.sunnyDayConsumptionKwh = parseFloat(sunnyLoadInput.value) || 10.0;
+    appData.config.rainyDayConsumptionKwh = parseFloat(rainyLoadInput.value) || 13.0;
 
     processForecastData();
     renderAllViews();
@@ -476,8 +465,8 @@ async function initApp() {
         const geo = await geocodeAddress(paramLoc);
         if (geo) {
             appData.currentLocation.name = geo.name;
-            appData.currentLocation.latitude = geo.latitude;
-            appData.currentLocation.longitude = geo.longitude;
+            appData.currentLocation.latitude = geo.lat || geo.latitude;
+            appData.currentLocation.longitude = geo.lon || geo.longitude;
         }
     }
 
