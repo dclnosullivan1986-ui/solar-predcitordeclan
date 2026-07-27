@@ -3,215 +3,345 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Newcastle West & Irish Eircode Solar Forecast Model</title>
-    
-    <!-- Google Fonts & Chart.js -->
+    <title>Irish Solar &amp; Savings Predictor — Newcastle West</title>
+    <meta name="description" content="Hourly solar generation forecast and running-cost model for Irish homes, with day/night/EV tariff rates, battery dispatch and Clean Export Guarantee income.">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-    <!-- Loading Screen -->
-    <div id="loadingOverlay" class="loading-overlay">
-        <div class="spinner"></div>
-        <h2 style="color: #ffffff; font-weight: 700;">Fetching Weather & Running Solar Model...</h2>
-        <p id="loadingSubtitle" style="color: #94a3b8; font-size: 0.9rem;">Newcastle West, Co. Limerick (V42 AD96)</p>
-    </div>
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner"></div>
+    <h2 class="loading-title">Fetching weather and running the model…</h2>
+    <p id="loadingSubtitle" class="loading-sub">Newcastle West, Co. Limerick (V42 AD96)</p>
+</div>
 
-    <!-- Header Navigation -->
-    <header>
-        <div class="header-container">
-            <div class="brand">
-                <div class="brand-icon">☀️</div>
-                <div class="brand-text">
-                    <h1>Solar Weather Predictor</h1>
-                    <p>Hourly Solar Generation & Weather Model • Ireland & Eircode Search</p>
-                </div>
-            </div>
-
-            <div style="display: flex; gap: 12px; align-items: center;">
-                <div id="locationDisplayBadge" class="location-badge">
-                    📍 Newcastle West, Co. Limerick (V42 AD96)
-                </div>
-                <div id="currentTimeDisplay" style="font-size: 0.85rem; color: #94a3b8; font-weight: 600;"></div>
+<header>
+    <div class="header-container">
+        <div class="brand">
+            <div class="brand-icon">☀️</div>
+            <div class="brand-text">
+                <h1>Solar &amp; Savings Predictor</h1>
+                <p>Hourly generation, battery dispatch and running costs for Irish homes</p>
             </div>
         </div>
-    </header>
+        <div class="header-right">
+            <div id="locationDisplayBadge" class="location-badge">📍 Newcastle West, Co. Limerick (V42 AD96)</div>
+            <div id="currentTimeDisplay" class="header-time"></div>
+        </div>
+    </div>
+</header>
 
-    <!-- Main Container -->
-    <div class="dashboard-container">
+<main class="dashboard-container">
 
-        <!-- Location & Eircode Search Card -->
-        <section class="search-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <h3 style="font-size: 1rem; font-weight: 700; color: #ffffff;">🔍 Search Location or Eircode</h3>
-                <span style="font-size: 0.8rem; color: #94a3b8;">Enter any Irish Eircode or Town to update model</span>
+    <!-- ── Location ─────────────────────────────────────────────── -->
+    <section class="panel">
+        <div class="panel-head">
+            <h3 class="panel-title">Location</h3>
+            <span class="panel-hint">Any Irish Eircode or town</span>
+        </div>
+        <div class="search-input-group">
+            <input type="text" id="locationSearchInput" placeholder="Eircode (V42 AD96) or town name" value="V42 AD96" autocomplete="postal-code">
+            <button id="btnSearchLocation" class="btn btn-cyan">Find location</button>
+        </div>
+        <div class="preset-pills">
+            <span class="pill-label">Quick pick</span>
+            <button class="pill-btn" data-loc="V42 AD96, Newcastle West">V42 AD96 · Newcastle West</button>
+            <button class="pill-btn" data-loc="V94 XV2W, Caherlevoy">V94 XV2W · Mountcollins</button>
+            <button class="pill-btn" data-loc="Abbeyfeale, Co. Limerick">Abbeyfeale</button>
+            <button class="pill-btn" data-loc="Limerick City">Limerick City</button>
+            <button class="pill-btn" data-loc="Charleville, Co. Cork">Charleville</button>
+            <button class="pill-btn" data-loc="Tralee, Co. Kerry">Tralee</button>
+            <button class="pill-btn" data-loc="Dublin City">Dublin</button>
+        </div>
+    </section>
+
+    <!-- ── Your setup ───────────────────────────────────────────── -->
+    <section class="setup-grid">
+
+        <div class="panel">
+            <div class="panel-head">
+                <h3 class="panel-title">Your array</h3>
             </div>
-            
-            <div class="search-input-group">
-                <input type="text" id="locationSearchInput" placeholder="Enter Eircode (e.g. V42 AD96, V94 XV2W) or Town..." value="V42 AD96">
-                <button id="btnSearchLocation" class="btn-search">
-                    🔎 Lookup Location
-                </button>
-            </div>
-
-            <div class="preset-pills">
-                <span>Quick Select:</span>
-                <button class="pill-btn" data-loc="V42 AD96, Newcastle West">📍 V42 AD96 (Newcastle West)</button>
-                <button class="pill-btn" data-loc="V94 XV2W, Caherlevoy">📍 V94 XV2W (Caherlevoy Mountcollins)</button>
-                <button class="pill-btn" data-loc="Abbeyfeale, Co. Limerick">📍 Abbeyfeale</button>
-                <button class="pill-btn" data-loc="Limerick City">📍 Limerick City</button>
-                <button class="pill-btn" data-loc="Charleville, Co. Cork">📍 Charleville</button>
-                <button class="pill-btn" data-loc="Tralee, Co. Kerry">📍 Tralee</button>
-            </div>
-        </section>
-
-        <!-- Solar PV Configuration Toolbar -->
-        <section class="config-bar">
-            <div class="config-group">
-                <label for="sysCapacity">System Size (kWp)</label>
-                <input type="number" id="sysCapacity" value="5.0" step="0.5" min="1.0" max="30.0">
-            </div>
-
-            <div class="config-group">
-                <label for="panelTilt">Roof Pitch / Tilt (°)</label>
-                <input type="number" id="panelTilt" value="35" step="5" min="0" max="90">
-            </div>
-
-            <div class="config-group">
-                <label for="panelOrientation">Panel Orientation</label>
-                <select id="panelOrientation">
-                    <option value="SOUTH" selected>South (180°) - Ideal</option>
-                    <option value="SOUTH_WEST">South-West (225°)</option>
-                    <option value="WEST">West (270°)</option>
-                    <option value="SOUTH_EAST">South-East (135°)</option>
-                    <option value="EAST">East (90°)</option>
-                </select>
-            </div>
-
-            <button id="btnRecalculate" class="btn-update">
-                🔄 Update Model
-            </button>
-        </section>
-
-        <!-- Hero Stats & Verdict Cards -->
-        <section class="hero-summary">
-            <!-- Daily Solar Verdict -->
-            <div class="card verdict-card">
-                <div class="card-title">
-                    <span>Solar Forecast Verdict</span>
-                    <span id="selectedDateBadge" style="font-size: 0.75rem; color: #94a3b8;">Today</span>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="sysCapacity">System size (kWp)</label>
+                    <input type="number" id="sysCapacity" value="5.0" step="0.5" min="0.5" max="30">
                 </div>
-                
-                <div class="verdict-header">
-                    <div id="verdictIcon" class="verdict-icon">☀️</div>
-                    <div>
-                        <div id="verdictBadge" class="solar-badge badge-excellent">Great Solar Day</div>
-                        <div id="verdictScoreText" style="font-size: 0.85rem; color: #94a3b8; margin-top: 4px;">Solar Potential Score: <strong id="solarScoreVal" style="color: #fff;">85/100</strong></div>
+                <div class="field">
+                    <label for="inverterKw">Inverter limit (kW)</label>
+                    <input type="number" id="inverterKw" value="5.0" step="0.5" min="0.5" max="30">
+                </div>
+                <div class="field">
+                    <label for="panelTilt">Roof pitch (°)</label>
+                    <input type="number" id="panelTilt" value="35" step="5" min="0" max="90">
+                </div>
+                <div class="field">
+                    <label for="panelOrientation">Facing</label>
+                    <select id="panelOrientation">
+                        <option value="SOUTH" selected>South — 180°</option>
+                        <option value="SOUTH_SOUTH_WEST">South-south-west — 202°</option>
+                        <option value="SOUTH_WEST">South-west — 225°</option>
+                        <option value="WEST">West — 270°</option>
+                        <option value="SOUTH_SOUTH_EAST">South-south-east — 157°</option>
+                        <option value="SOUTH_EAST">South-east — 135°</option>
+                        <option value="EAST">East — 90°</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-head">
+                <h3 class="panel-title">Your home</h3>
+                <span class="panel-hint">Everyday usage, before EV and immersion</span>
+            </div>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="dailyUsage">Daily usage (kWh)</label>
+                    <input type="number" id="dailyUsage" value="10" step="0.5" min="1" max="80">
+                </div>
+                <div class="field">
+                    <label for="loadProfile">Usage pattern</label>
+                    <select id="loadProfile">
+                        <option value="EVENING_PEAK" selected>Typical — evening peak</option>
+                        <option value="DAYTIME">Home all day / WFH</option>
+                        <option value="HEAT_PUMP">Heat pump home</option>
+                        <option value="FLAT">Even through the day</option>
+                    </select>
+                </div>
+                <div class="field field-wide">
+                    <label for="flexSchedule">When flexible loads run</label>
+                    <select id="flexSchedule">
+                        <option value="CHEAP_NIGHT" selected>Cheap night window (02:00–05:00)</option>
+                        <option value="SOLAR">Middle of the day, off the panels</option>
+                        <option value="ANYTIME">Evening, whenever needed</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="toggle-stack">
+                <div class="toggle-row">
+                    <label class="switch">
+                        <input type="checkbox" id="batteryEnabled" checked>
+                        <span class="slider"></span>
+                    </label>
+                    <span class="toggle-name">Home battery</span>
+                    <div class="toggle-fields">
+                        <input type="number" id="batteryCapacity" value="5.0" step="0.5" min="0" max="60" aria-label="Battery capacity in kWh">
+                        <span class="unit-tag">kWh</span>
+                        <input type="number" id="batteryPower" value="3.0" step="0.5" min="0.5" max="20" aria-label="Battery charge and discharge power in kW">
+                        <span class="unit-tag">kW</span>
                     </div>
                 </div>
 
-                <p id="verdictSummary" class="stat-desc">High solar generation expected! Excellent window to charge EV, heat water/home, & export energy.</p>
+                <div class="toggle-row">
+                    <label class="switch">
+                        <input type="checkbox" id="evEnabled">
+                        <span class="slider"></span>
+                    </label>
+                    <span class="toggle-name">Electric car</span>
+                    <div class="toggle-fields">
+                        <input type="number" id="evKwh" value="20" step="1" min="1" max="100" aria-label="kWh per charge">
+                        <span class="unit-tag">kWh</span>
+                        <input type="number" id="evSessions" value="4" step="1" min="1" max="7" aria-label="Charges per week">
+                        <span class="unit-tag">× / wk</span>
+                    </div>
+                </div>
 
-                <div class="score-bar-container">
-                    <div id="scoreBarFill" class="score-bar-fill" style="width: 85%;"></div>
+                <div class="toggle-row">
+                    <label class="switch">
+                        <input type="checkbox" id="immersionEnabled" checked>
+                        <span class="slider"></span>
+                    </label>
+                    <span class="toggle-name">Immersion / hot water</span>
+                    <div class="toggle-fields">
+                        <input type="number" id="immersionKwh" value="2.4" step="0.2" min="0" max="20" aria-label="kWh per day">
+                        <span class="unit-tag">kWh / day</span>
+                    </div>
                 </div>
             </div>
 
-            <!-- Total kWh Generation Card -->
-            <div class="card">
-                <div class="card-title">
-                    <span>Estimated Daily Generation</span>
-                    <span>⚡</span>
-                </div>
-                <div class="main-stat">
-                    <span id="totalKwhVal">18.4</span> <span class="unit">kWh</span>
-                </div>
-                <p class="stat-desc">Equivalent to <strong id="yieldPerKwpVal">3.68</strong> kWh per installed kWp.</p>
-                <div class="appliance-box" id="applianceAdviceBox">
-                    💡 <strong>Optimal Loads Window:</strong> <span id="applianceWindowVal">11:00 AM – 15:00 PM</span>
-                </div>
+            <div class="field field-wide" style="margin-top:14px;">
+                <label for="batteryStrategy">Battery charging plan</label>
+                <select id="batteryStrategy">
+                    <option value="SMART" selected>Smart — let the forecast decide</option>
+                    <option value="NIGHT_FIRST">Night-first — fill it every night</option>
+                    <option value="SOLAR_ONLY">Solar only — never buy from the grid</option>
+                </select>
             </div>
+        </div>
 
-            <!-- Peak Generation & Cloud Card -->
-            <div class="card">
-                <div class="card-title">
-                    <span>Peak Solar Power</span>
-                    <span>🌤️</span>
+        <div class="panel">
+            <div class="panel-head">
+                <h3 class="panel-title">Your tariff</h3>
+                <span class="panel-hint">Cent per kWh, VAT included</span>
+            </div>
+            <div class="preset-pills" style="margin-bottom:14px;">
+                <button class="pill-btn" data-tariff="EV_NIGHT">EV / night plan</button>
+                <button class="pill-btn" data-tariff="SMART_PEAK">Smart with 17–19 peak</button>
+                <button class="pill-btn" data-tariff="STANDARD_24H">Flat 24-hour</button>
+                <button class="pill-btn" data-tariff="NO_EXPORT">No export payment</button>
+            </div>
+            <div class="field-grid">
+                <div class="field">
+                    <label for="rateDay">Day 08:00–23:00</label>
+                    <input type="number" id="rateDay" value="30" step="0.1" min="0" max="200">
                 </div>
-                <div class="main-stat">
-                    <span id="peakPowerVal">3.85</span> <span class="unit">kW</span>
+                <div class="field">
+                    <label for="rateNight">Night 23:00–08:00</label>
+                    <input type="number" id="rateNight" value="20" step="0.1" min="0" max="200">
                 </div>
-                <p class="stat-desc">Expected around <strong id="peakHourVal">13:00</strong>. Avg daytime cloud cover: <strong id="avgCloudVal">32%</strong>.</p>
-            </div>
-        </section>
-
-        <!-- 7-Day Solar Forecast Calendar -->
-        <section style="display: flex; flex-direction: column; gap: 12px;">
-            <div class="section-header">
-                <h2 class="section-title">📅 7-Day Solar Forecast Calendar</h2>
-                <p style="font-size: 0.85rem; color: #94a3b8;">Click any day to view its detailed hourly model</p>
-            </div>
-
-            <div id="forecastGrid" class="forecast-grid">
-                <!-- Dynamically populated day cards -->
-            </div>
-        </section>
-
-        <!-- Hourly Chart Visualization -->
-        <section class="card chart-card">
-            <div class="section-header" style="margin-bottom: 16px;">
-                <h2 class="section-title">📈 Hourly Solar Output vs Cloud Cover</h2>
-                <div class="tab-group">
-                    <button class="tab-btn active" id="btnChartGen">Generation (kW)</button>
-                    <button class="tab-btn" id="btnChartIrradiance">Irradiance (W/m²)</button>
+                <div class="field">
+                    <label for="rateEv">EV window 02:00–05:00</label>
+                    <input type="number" id="rateEv" value="10" step="0.1" min="0" max="200">
+                </div>
+                <div class="field">
+                    <label for="ratePeak">Evening peak 17:00–19:00</label>
+                    <input type="number" id="ratePeak" value="30" step="0.1" min="0" max="200">
+                </div>
+                <div class="field">
+                    <label for="rateExport">Export (CEG)</label>
+                    <input type="number" id="rateExport" value="18.5" step="0.1" min="0" max="200">
+                </div>
+                <div class="field">
+                    <label for="standingCharge">Standing charge (€/day)</label>
+                    <input type="number" id="standingCharge" value="0.85" step="0.05" min="0" max="10">
                 </div>
             </div>
-            <div class="chart-wrapper">
-                <canvas id="hourlyChart"></canvas>
+            <button id="btnRecalculate" class="btn btn-amber btn-block">Update the model</button>
+        </div>
+    </section>
+
+    <!-- ── Today ────────────────────────────────────────────────── -->
+    <section class="hero-summary">
+        <div class="card verdict-card">
+            <div class="card-title">
+                <span>Sky conditions</span>
+                <span id="selectedDateBadge" class="card-badge">Today</span>
             </div>
-        </section>
-
-        <!-- Hourly Breakdown Table -->
-        <section style="display: flex; flex-direction: column; gap: 12px;">
-            <div class="section-header">
-                <h2 class="section-title">📊 Hourly Meteorological & Model Data</h2>
+            <div class="verdict-header">
+                <div id="verdictIcon" class="verdict-icon">☀️</div>
+                <div>
+                    <div id="verdictBadge" class="solar-badge badge-excellent">Wall-to-wall sunshine</div>
+                    <div class="verdict-score">Rated <strong id="solarScoreVal">—</strong> against a cloudless sky</div>
+                </div>
             </div>
-            
-            <div class="table-container">
-                <table class="hourly-table">
-                    <thead>
-                        <tr>
-                            <th>Hour</th>
-                            <th>Weather</th>
-                            <th>Temp (°C)</th>
-                            <th>Cloud Cover (%)</th>
-                            <th>Global Irradiance (W/m²)</th>
-                            <th>Effective Solar Power</th>
-                            <th>Model Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="hourlyTableBody">
-                        <!-- Populated by JavaScript -->
-                    </tbody>
-                </table>
+            <p id="verdictSummary" class="stat-desc">Loading forecast…</p>
+            <div class="score-bar-container"><div id="scoreBarFill" class="score-bar-fill" style="width:0%"></div></div>
+            <div class="mini-metrics">
+                <div><span id="clearnessVal">—</span><label>of clear sky</label></div>
+                <div><span id="sunshineVal">—</span><label>sunshine hours</label></div>
+                <div><span id="avgCloudVal">—</span><label>cloud when it counts</label></div>
             </div>
-        </section>
+        </div>
 
-    </div>
+        <div class="card">
+            <div class="card-title"><span>Generation</span><span>⚡</span></div>
+            <div class="main-stat"><span id="totalKwhVal">—</span> <span class="unit">kWh</span></div>
+            <p class="stat-desc"><strong id="yieldPerKwpVal">—</strong> kWh per kWp installed. Peak <strong id="peakPowerVal">—</strong> kW around <strong id="peakHourVal">—</strong>.</p>
+            <div class="callout callout-amber">
+                <strong>Best window for a big load</strong>
+                <span id="applianceWindowVal">—</span>
+            </div>
+        </div>
 
-    <!-- Footer -->
-    <footer>
-        <p>Irish Eircode Solar Weather Predictor • Open-Meteo Ireland High-Resolution Hourly Model</p>
-        <p id="footerCoordsText" style="margin-top: 4px; font-size: 0.75rem; color: #64748b;">Newcastle West, Co. Limerick (V42 AD96) • Lat: 52.4497° N | Lon: -9.0612° W</p>
-    </footer>
+        <div class="card">
+            <div class="card-title"><span>Today's electricity bill</span><span>💶</span></div>
+            <div class="main-stat"><span id="dayCostVal">—</span></div>
+            <p class="stat-desc">Without solar or battery this day costs <strong id="dayBaselineVal">—</strong>. You keep <strong id="daySavingVal" class="pos">—</strong>.</p>
+            <div class="callout callout-emerald">
+                <strong>Export</strong>
+                <span><span id="exportKwhVal">—</span> kWh sold back, worth <span id="exportIncomeVal">—</span></span>
+            </div>
+        </div>
+    </section>
 
-    <!-- App Scripts -->
-    <script src="solar-model.js"></script>
-    <script src="app.js"></script>
+    <!-- ── Week ─────────────────────────────────────────────────── -->
+    <section class="stack">
+        <div class="section-header">
+            <h2 class="section-title">The week ahead</h2>
+            <p class="section-sub">Tap a day to model it in detail</p>
+        </div>
+        <div id="forecastGrid" class="forecast-grid"></div>
+        <div id="weekTotals" class="week-totals"></div>
+    </section>
+
+    <!-- ── Charts ───────────────────────────────────────────────── -->
+    <section class="card chart-card">
+        <div class="section-header chart-header">
+            <h2 class="section-title" id="chartTitle">Where the energy goes</h2>
+            <div class="tab-group" role="tablist">
+                <button class="tab-btn active" data-chart="flow">Energy flow</button>
+                <button class="tab-btn" data-chart="generation">Generation</button>
+                <button class="tab-btn" data-chart="battery">Battery &amp; rates</button>
+                <button class="tab-btn" data-chart="irradiance">Irradiance</button>
+            </div>
+        </div>
+        <div class="chart-wrapper"><canvas id="hourlyChart"></canvas></div>
+        <p id="chartCaption" class="chart-caption"></p>
+    </section>
+
+    <!-- ── Cost breakdown ───────────────────────────────────────── -->
+    <section class="cost-grid">
+        <div class="panel">
+            <div class="panel-head"><h3 class="panel-title">What you pay, band by band</h3></div>
+            <table class="mini-table">
+                <thead><tr><th>Rate band</th><th>Imported</th><th>Rate</th><th>Cost</th></tr></thead>
+                <tbody id="bandTableBody"></tbody>
+            </table>
+        </div>
+        <div class="panel">
+            <div class="panel-head"><h3 class="panel-title">Charging plans compared</h3><span class="panel-hint">Same day, same house</span></div>
+            <div id="strategyList" class="strategy-list"></div>
+            <div id="splitBars" class="split-bars"></div>
+        </div>
+    </section>
+
+    <!-- ── Insights ─────────────────────────────────────────────── -->
+    <section class="stack">
+        <div class="section-header">
+            <h2 class="section-title">Worth knowing</h2>
+            <p class="section-sub">Irish rules and rate quirks that change the sums</p>
+        </div>
+        <div id="insightsGrid" class="insights-grid"></div>
+    </section>
+
+    <!-- ── Hourly detail ────────────────────────────────────────── -->
+    <section class="stack">
+        <div class="section-header">
+            <h2 class="section-title">Hour by hour</h2>
+            <p class="section-sub">Weather, generation, household load and grid flows</p>
+        </div>
+        <div class="table-container">
+            <table class="hourly-table">
+                <thead>
+                    <tr>
+                        <th>Hour</th><th>Rate</th><th>Weather</th><th>Temp</th><th>Cloud</th>
+                        <th>Irradiance actual / clear</th><th>Generation</th><th>House load</th>
+                        <th>Battery</th><th>Grid</th>
+                    </tr>
+                </thead>
+                <tbody id="hourlyTableBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+</main>
+
+<footer>
+    <p>Irish Solar &amp; Savings Predictor · Weather from the Open-Meteo high-resolution model</p>
+    <p id="footerCoordsText" class="footer-sub">Newcastle West, Co. Limerick (V42 AD96) · 52.4497° N, 9.0612° W</p>
+    <p class="footer-sub">Estimates only. Actual generation and bills depend on shading, your panels, your meter and your supplier's current rates. Check rates on your own bill before making decisions.</p>
+</footer>
+
+<script src="solar-model.js"></script>
+<script src="energy-model.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
