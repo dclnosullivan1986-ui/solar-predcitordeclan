@@ -161,7 +161,9 @@ window.SolarModel = (function () {
         const panelAzimuthDeg = (cfg.panelAzimuthDeg === undefined) ? 180 : cfg.panelAzimuthDeg;
         const systemEfficiency = cfg.systemEfficiency || 0.85;
         const inverterKwAc = cfg.inverterKwAc || systemCapacityKwp;
-        const shadeFactor = (cfg.shadeFactor === undefined) ? 1.0 : cfg.shadeFactor;
+        const shadeFactor = 1 - Math.max(0, Math.min(90, cfg.shadingLossPct || 0)) / 100;
+        // Modules lose roughly half a percent of output a year.
+        const degradation = Math.pow(0.995, Math.max(0, cfg.systemAgeYears || 0));
 
         const shortwave = weatherHour.shortwave_radiation || 0;
         const direct = weatherHour.direct_radiation || 0;
@@ -182,7 +184,8 @@ window.SolarModel = (function () {
 
         if (shortwave <= 2 && globalTilted <= 2) {
             return {
-                powerKw: 0, energyKwh: 0, effectiveIrradianceWm2: 0,
+                powerKw: 0, energyKwh: 0, dcPotentialKw: 0, clippedKw: 0,
+                effectiveIrradianceWm2: 0,
                 clearSkyIrradianceWm2: Math.round(clear.poa),
                 sunElevation: sun.elevation, tempLossPct: 0,
                 isDaylight: false, clearnessIndex: 0
@@ -213,15 +216,22 @@ window.SolarModel = (function () {
         const cellTemp = temperature + (poa / 800) * (44 - 20) * (1 / (1 + 0.06 * Math.max(0, windSpeed - 1)));
         const tempDerating = 1 + (cellTemp - 25) * -0.0038;
 
-        let dcKw = (poa / 1000) * systemCapacityKwp * systemEfficiency * tempDerating * shadeFactor;
+        let dcKw = (poa / 1000) * systemCapacityKwp * systemEfficiency * tempDerating * shadeFactor * degradation;
         // Low-light losses: inverters and modules are less efficient at very low irradiance.
         if (poa < 120) dcKw *= 0.86 + 0.14 * (poa / 120);
+        dcKw = Math.max(0, dcKw);
 
-        let powerKw = Math.min(inverterKwAc, Math.max(0, dcKw));
+        // The inverter can only pass so much to AC. Everything above that is
+        // "clipped" — lost entirely on an AC-coupled system, but a DC-coupled
+        // hybrid can still push it into the battery, so it is reported separately.
+        const powerKw = Math.min(inverterKwAc, dcKw);
+        const clippedKw = Math.max(0, dcKw - powerKw);
 
         return {
             powerKw: Math.round(powerKw * 1000) / 1000,
             energyKwh: Math.round(powerKw * 1000) / 1000, // hourly steps: 1 kW for 1 h = 1 kWh
+            dcPotentialKw: Math.round(dcKw * 1000) / 1000,
+            clippedKw: Math.round(clippedKw * 1000) / 1000,
             effectiveIrradianceWm2: Math.round(poa),
             clearSkyIrradianceWm2: Math.round(clear.poa),
             sunElevation: Math.round(sun.elevation * 10) / 10,
@@ -229,6 +239,52 @@ window.SolarModel = (function () {
             clearnessIndex: clear.poa > 20 ? Math.min(1.15, poa / clear.poa) : 0,
             isDaylight: sun.elevation > 0
         };
+    }
+
+    /**
+     * Relative annual clear-sky energy on a plane, sampled at midday intervals
+     * across twelve representative days. Used to compare a roof against the
+     * best available pitch and facing for its latitude.
+     */
+    // Typical Irish monthly clearness. Without this weighting a pure clear-sky
+    // integration recommends a steep winter-friendly pitch, which is wrong here:
+    // Irish winters are too cloudy for that extra winter sun to ever arrive.
+    const IE_MONTHLY_CLEARNESS = [0.31, 0.36, 0.40, 0.45, 0.47, 0.45, 0.43, 0.42, 0.39, 0.34, 0.30, 0.27];
+
+    function annualTiltFactor(lat, lon, tiltDeg, azDeg) {
+        let total = 0;
+        for (let m = 0; m < 12; m++) {
+            const base = Date.UTC(2025, m, 15);
+            const kt = IE_MONTHLY_CLEARNESS[m];
+            // Over half of Ireland's annual sunlight arrives as diffuse sky rather
+            // than direct beam, and diffuse favours a flatter pitch. Ignoring that
+            // recommends a needlessly steep roof.
+            const diffuseFraction = Math.max(0.35, Math.min(0.95, 0.95 - 0.85 * kt));
+            for (let h = 0; h < 24; h++) {
+                const sun = getSunPosition(base + h * 3600000, lat, lon);
+                if (sun.elevation <= 1.5) continue;
+                const ghi = clearSkyPoa(sun.elevation, sun.azimuth, 0, 180).ghi * kt;
+                const dhi = ghi * diffuseFraction;
+                const dni = (ghi - dhi) / Math.max(0.05, Math.sin(RAD * sun.elevation));
+                const cosI = Math.max(0, cosIncidence(sun.elevation, sun.azimuth, tiltDeg, azDeg));
+                total += dni * cosI
+                    + dhi * ((1 + Math.cos(RAD * tiltDeg)) / 2)
+                    + ghi * ALBEDO * ((1 - Math.cos(RAD * tiltDeg)) / 2);
+            }
+        }
+        return total;
+    }
+
+    /** Best pitch and facing for a latitude, found by search. */
+    function bestTiltFor(lat, lon) {
+        let best = { tilt: 35, azimuth: 180, value: 0 };
+        for (let tilt = 0; tilt <= 60; tilt += 5) {
+            for (let az = 120; az <= 240; az += 15) {
+                const v = annualTiltFactor(lat, lon, tilt, az);
+                if (v > best.value) best = { tilt: tilt, azimuth: az, value: v };
+            }
+        }
+        return best;
     }
 
     /* ------------------------------------------------------------------ *
@@ -281,6 +337,8 @@ window.SolarModel = (function () {
         const systemCapacityKwp = cfg.systemCapacityKwp || 5.0;
 
         let totalKwh = 0;
+        let clippedKwh = 0;
+        let dcPotentialKwh = 0;
         let clearSkyKwh = 0;
         let maxPowerKw = 0;
         let peakHour = null;
@@ -302,6 +360,8 @@ window.SolarModel = (function () {
             hourly.push(row);
 
             totalKwh += y.energyKwh;
+            clippedKwh += y.clippedKw || 0;
+            dcPotentialKwh += y.dcPotentialKw || 0;
 
             const clearKw = (y.clearSkyIrradianceWm2 / 1000) * systemCapacityKwp * (cfg.systemEfficiency || 0.85);
             clearSkyKwh += Math.min(cfg.inverterKwAc || systemCapacityKwp, clearKw);
@@ -383,6 +443,8 @@ window.SolarModel = (function () {
         return {
             date: dayHours[0] ? String(dayHours[0].time).split('T')[0] : '',
             totalKwh: Math.round(totalKwh * 100) / 100,
+            clippedKwh: Math.round(clippedKwh * 100) / 100,
+            dcPotentialKwh: Math.round(dcPotentialKwh * 100) / 100,
             clearSkyKwh: Math.round(clearSkyKwh * 100) / 100,
             yieldPerKwp: Math.round(yieldPerKwp * 100) / 100,
             maxPowerKw: Math.round(maxPowerKw * 100) / 100,
@@ -419,6 +481,8 @@ window.SolarModel = (function () {
         toUtcMillis: toUtcMillis,
         getSunPosition: getSunPosition,
         clearSkyPoa: clearSkyPoa,
+        annualTiltFactor: annualTiltFactor,
+        bestTiltFor: bestTiltFor,
         calculateHourlyYield: calculateHourlyYield,
         analyzeDailySolarForecast: analyzeDailySolarForecast
     };

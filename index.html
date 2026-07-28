@@ -93,7 +93,28 @@
                         <option value="EAST">East — 90°</option>
                     </select>
                 </div>
+                <div class="field">
+                    <label for="shadingLoss">Shading loss (%)</label>
+                    <input type="number" id="shadingLoss" value="5" step="1" min="0" max="80">
+                </div>
+                <div class="field">
+                    <label for="systemAge">System age (years)</label>
+                    <input type="number" id="systemAge" value="0" step="1" min="0" max="30">
+                </div>
+                <div class="field">
+                    <label for="gridPhase">Supply</label>
+                    <select id="gridPhase">
+                        <option value="SINGLE" selected>Single phase</option>
+                        <option value="THREE">Three phase</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="exportLimit">Export cap (kW)</label>
+                    <input type="number" id="exportLimit" value="6.0" step="0.5" min="0" max="50">
+                </div>
             </div>
+            <p class="panel-note">ESB Networks assesses the NC6 limit on the <strong>inverter</strong>, not the panels:
+                25 A (~6 kVA) single phase, 16 A per phase (~11 kVA) three phase. A bigger array behind a smaller inverter is normal.</p>
         </div>
 
         <div class="panel">
@@ -167,13 +188,22 @@
                 </div>
             </div>
 
-            <div class="field field-wide" style="margin-top:14px;">
-                <label for="batteryStrategy">Battery charging plan</label>
-                <select id="batteryStrategy">
-                    <option value="SMART" selected>Smart — let the forecast decide</option>
-                    <option value="NIGHT_FIRST">Night-first — fill it every night</option>
-                    <option value="SOLAR_ONLY">Solar only — never buy from the grid</option>
-                </select>
+            <div class="field-grid" style="margin-top:14px;">
+                <div class="field field-wide">
+                    <label for="batteryStrategy">Battery charging plan</label>
+                    <select id="batteryStrategy">
+                        <option value="SMART" selected>Smart — let the forecast decide</option>
+                        <option value="NIGHT_FIRST">Night-first — fill it every night</option>
+                        <option value="SOLAR_ONLY">Solar only — never buy from the grid</option>
+                    </select>
+                </div>
+                <div class="field field-wide">
+                    <label for="batteryCoupling">Battery wiring</label>
+                    <select id="batteryCoupling">
+                        <option value="DC" selected>DC-coupled hybrid — can catch clipped energy</option>
+                        <option value="AC">AC-coupled — sits after the inverter</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -259,6 +289,10 @@
                 <strong>Export</strong>
                 <span><span id="exportKwhVal">—</span> kWh sold back, worth <span id="exportIncomeVal">—</span></span>
             </div>
+            <div class="callout callout-rose" id="lossCallout">
+                <strong>Never generated</strong>
+                <span id="lossVal">—</span>
+            </div>
         </div>
     </section>
 
@@ -301,6 +335,15 @@
             <div id="strategyList" class="strategy-list"></div>
             <div id="splitBars" class="split-bars"></div>
         </div>
+    </section>
+
+    <!-- ── System check ─────────────────────────────────────────── -->
+    <section class="stack">
+        <div class="section-header">
+            <h2 class="section-title">System check</h2>
+            <p class="section-sub">Array against inverter, inverter against the grid, battery against the surplus</p>
+        </div>
+        <div id="systemCheckGrid" class="insights-grid"></div>
     </section>
 
     <!-- ── Insights ─────────────────────────────────────────────── -->

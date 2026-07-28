@@ -524,6 +524,49 @@ header {
     padding: 16px 18px;
 }
 
+.panel-note {
+    font-size: 0.75rem;
+    color: var(--text-subtle);
+    line-height: 1.5;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.panel-note strong { color: var(--text-muted); }
+
+.callout-rose { background: rgba(244, 63, 94, 0.09); border-left: 3px solid var(--accent-rose); color: #fecdd3; }
+
+.check-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-glass);
+    border-left: 3px solid var(--text-subtle);
+    border-radius: var(--radius-md);
+    padding: 16px 18px;
+}
+
+.check-good { border-left-color: var(--accent-emerald); }
+.check-watch { border-left-color: var(--accent-amber); }
+.check-issue { border-left-color: var(--accent-rose); }
+
+.check-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; flex-wrap: wrap; margin-bottom: 7px;
+}
+
+.check-head h4 { font-size: 0.92rem; font-weight: 700; color: #fff; }
+
+.check-metric {
+    font-family: var(--mono); font-size: 0.72rem; font-weight: 700;
+    padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+}
+
+.check-good .check-metric { background: rgba(16, 185, 129, 0.18); color: #34d399; }
+.check-watch .check-metric { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+.check-issue .check-metric { background: rgba(244, 63, 94, 0.18); color: #fb7185; }
+
+.check-card p { font-size: 0.83rem; color: var(--text-muted); line-height: 1.55; }
+
 .insight-card h4 {
     font-size: 0.92rem; font-weight: 700; color: #fff;
     margin-bottom: 6px; display: flex; align-items: center; gap: 8px;

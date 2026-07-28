@@ -69,6 +69,8 @@
             inverterKwAc: inverter,
             panelTiltDeg: Math.max(0, Math.min(90, num('panelTilt', 35))),
             panelAzimuthDeg: SM.ORIENTATIONS[$('panelOrientation').value] || 180,
+            shadingLossPct: Math.max(0, Math.min(80, num('shadingLoss', 5))),
+            systemAgeYears: Math.max(0, num('systemAge', 0)),
             latitude: state.location.latitude,
             longitude: state.location.longitude,
             utcOffsetSeconds: state.utcOffsetSeconds
@@ -85,7 +87,12 @@
                 maxDischargeKw: Math.max(0.5, num('batteryPower', 3)),
                 roundTripEff: 0.90,
                 minSocPct: 10,
-                strategy: $('batteryStrategy').value
+                strategy: $('batteryStrategy').value,
+                coupling: $('batteryCoupling').value
+            },
+            grid: {
+                phase: $('gridPhase').value,
+                exportLimitKw: Math.max(0, num('exportLimit', 6))
             },
             ev: {
                 enabled: $('evEnabled').checked,
@@ -125,10 +132,11 @@
         });
     }
 
-    const SETTING_IDS = ['sysCapacity', 'inverterKw', 'panelTilt', 'panelOrientation', 'dailyUsage',
+    const SETTING_IDS = ['sysCapacity', 'inverterKw', 'panelTilt', 'panelOrientation', 'shadingLoss',
+        'systemAge', 'gridPhase', 'exportLimit', 'dailyUsage',
         'loadProfile', 'flexSchedule', 'batteryCapacity', 'batteryPower', 'batteryStrategy',
-        'evKwh', 'evSessions', 'immersionKwh', 'rateDay', 'rateNight', 'rateEv', 'ratePeak',
-        'rateExport', 'standingCharge'];
+        'batteryCoupling', 'evKwh', 'evSessions', 'immersionKwh', 'rateDay', 'rateNight', 'rateEv',
+        'ratePeak', 'rateExport', 'standingCharge'];
     const TOGGLE_IDS = ['batteryEnabled', 'evEnabled', 'immersionEnabled'];
 
     function saveSettings() {
@@ -410,6 +418,18 @@
         $('daySavingVal').textContent = euro(sim.savingVsNoSolar);
         $('exportKwhVal').textContent = sim.exportedKwh.toFixed(1);
         $('exportIncomeVal').textContent = euro(sim.exportIncome);
+
+        const lossBox = $('lossCallout');
+        if (sim.lostKwh > 0.05) {
+            const bits = [];
+            if (sim.clippedLostKwh > 0.05) bits.push(sim.clippedLostKwh.toFixed(1) + ' kWh clipped at the inverter');
+            if (sim.curtailedKwh > 0.05) bits.push(sim.curtailedKwh.toFixed(1) + ' kWh held back by the export cap');
+            if (sim.clippedRecoveredKwh > 0.05) bits.push(sim.clippedRecoveredKwh.toFixed(1) + ' kWh rescued by the battery');
+            $('lossVal').textContent = bits.join(' · ') + ' — about ' + euro(sim.lostValue) + ' of it.';
+            lossBox.style.display = '';
+        } else {
+            lossBox.style.display = 'none';
+        }
     }
 
     function renderCosts() {
@@ -454,6 +474,16 @@
         const shown = displayOverride || euro(value);
         return '<div class="split-item"><div class="split-head"><span>' + label + '</span><b>' + shown + '</b></div>' +
             '<div class="split-track"><div class="split-fill" style="width:' + pct + '%;background:' + color + '"></div></div></div>';
+    }
+
+    function renderSystemCheck() {
+        const findings = EM.assessSystem(state.days, state.sims, state.solarConfig, state.econConfig);
+        $('systemCheckGrid').innerHTML = findings.map(function (f) {
+            return '<div class="check-card check-' + f.level + '">' +
+                '<div class="check-head"><h4>' + f.title + '</h4>' +
+                '<span class="check-metric">' + f.metric + '</span></div>' +
+                '<p>' + f.body + '</p></div>';
+        }).join('');
     }
 
     function renderInsights() {
@@ -526,7 +556,8 @@
         },
         generation: {
             title: 'Generation against cloud cover',
-            caption: 'Panel output in kW with cloud cover on the right-hand axis. Steep dips through the middle of the day are passing cloud.'
+            caption: 'Panel output in kW with cloud cover on the right-hand axis. Where the dashed red line sits above the solid one, ' +
+                'the array is making more than the inverter can pass and the difference is being clipped.'
         },
         battery: {
             title: 'Battery charge and what each hour costs',
@@ -603,6 +634,12 @@
                             label: 'Generation (kW)', data: rows.map(function (r) { return r.generation; }),
                             borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.2)',
                             fill: true, tension: 0.35, borderWidth: 3, pointRadius: 0, yAxisID: 'y'
+                        },
+                        {
+                            label: 'Potential before inverter clipping (kW)',
+                            data: labels.map(function (h2, h) { return byHour[h] ? byHour[h].dcPotentialKw : 0; }),
+                            borderColor: 'rgba(244,63,94,0.75)', backgroundColor: 'transparent',
+                            borderDash: [4, 4], tension: 0.35, borderWidth: 2, pointRadius: 0, yAxisID: 'y'
                         },
                         {
                             label: 'Cloud cover (%)',
@@ -687,6 +724,7 @@
         renderWeek();
         renderHero();
         renderCosts();
+        renderSystemCheck();
         renderInsights();
         renderHourlyTable();
         renderChart();
@@ -784,6 +822,11 @@
                 process();
                 renderAll();
             });
+        });
+
+        $('gridPhase').addEventListener('change', function () {
+            $('exportLimit').value = (EM.NC6_LIMIT[$('gridPhase').value] || 6).toFixed(1);
+            readConfig(); process(); renderAll();
         });
 
         // Array changes need fresh tilted-irradiance data; everything else is local maths.
