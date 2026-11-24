@@ -258,6 +258,7 @@
                 peakRate: num('ratePeak', 40.95),
                 exportRate: num('rateExport', 18.5),
                 standingChargeEuroPerDay: num('standingCharge', 1.11),
+                taxExemptionEuro: num('taxAllowance', 800),
                 evStart: evWin.start,
                 evEnd: evWin.end,
                 exportEnabled: num('rateExport', 18.5) > 0
@@ -288,7 +289,7 @@
         'systemAge', 'gridPhase', 'exportLimit', 'calibrationPct', 'array2Capacity', 'array2Tilt', 'array2Orientation',
         'dailyUsage', 'loadProfile', 'flexSchedule', 'batteryCapacity', 'batteryPower', 'batteryStrategy',
         'batteryCoupling', 'evKwh', 'evSessions', 'immersionKwh', 'rateDay', 'rateNight', 'rateEv',
-        'evWindowSelect', 'ratePeak', 'rateExport', 'standingCharge'];
+        'evWindowSelect', 'ratePeak', 'rateExport', 'standingCharge', 'taxAllowance'];
     const TOGGLE_IDS = ['array2Enabled', 'weatherAdjustedLoad', 'batteryEnabled', 'evEnabled', 'immersionEnabled'];
 
     function saveSettings() {
@@ -1399,22 +1400,24 @@
         }
         $('meterKpis').innerHTML = kpiHtml;
 
-        // €400 Revenue CEG exemption tracker for the latest calendar year in the CSV
+        // Revenue CEG exemption tracker (€400 single / €800 joint account)
         const taxBar = $('meterTaxBar');
+        const taxCap = t.taxExemptionEuro || 800;
+        const taxLabel = taxCap >= 800 ? '€' + taxCap + ' Joint Revenue Tax-Free Allowance' : '€' + taxCap + ' Revenue Tax-Free Allowance';
         if (md.hasSolar && t.exportEnabled) {
-            const pct = Math.min(100, Math.round((ytdExportEuro / 400) * 100));
-            const remaining = Math.max(0, 400 - ytdExportEuro);
-            const barColor = ytdExportEuro >= 400 ? '#f43f5e' : (ytdExportEuro >= 300 ? '#f59e0b' : '#10b981');
+            const pct = Math.min(100, Math.round((ytdExportEuro / taxCap) * 100));
+            const remaining = Math.max(0, taxCap - ytdExportEuro);
+            const barColor = ytdExportEuro >= taxCap ? '#f43f5e' : (ytdExportEuro >= taxCap * 0.75 ? '#f59e0b' : '#10b981');
             taxBar.innerHTML =
                 '<div class="meter-tax-head">' +
-                '<span>🇮🇪 <strong>' + md.latestYear + '</strong> Real Export Income vs €400 Revenue Tax-Free Allowance</span>' +
-                '<strong>' + euro(ytdExportEuro) + ' / €400.00 (' + pct + '%)</strong>' +
+                '<span>🇮🇪 <strong>' + md.latestYear + '</strong> Real Export Income vs ' + taxLabel + '</span>' +
+                '<strong>' + euro(ytdExportEuro) + ' / €' + taxCap.toFixed(2) + ' (' + pct + '%)</strong>' +
                 '</div>' +
                 '<div class="split-track"><div class="split-fill" style="width:' + pct + '%;background:' + barColor + '"></div></div>' +
                 '<div style="font-size:0.72rem;color:var(--text-subtle);margin-top:6px;">' +
                 md.ytdExportKwh.toFixed(1) + ' kWh exported in ' + md.latestYear + ' at ' + t.exportRate.toFixed(1) + 'c/kWh — ' +
-                (ytdExportEuro >= 400
-                    ? 'above the €400 tax-free microgeneration threshold by ' + euro(ytdExportEuro - 400) + '.'
+                (ytdExportEuro >= taxCap
+                    ? 'above the €' + taxCap + ' tax-free microgeneration threshold by ' + euro(ytdExportEuro - taxCap) + '.'
                     : euro(remaining) + ' of tax-free headroom remaining in ' + md.latestYear + '.') +
                 '</div>';
             taxBar.style.display = '';

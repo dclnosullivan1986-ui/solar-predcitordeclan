@@ -992,18 +992,21 @@ window.EnergyModel = (function () {
             });
         }
 
-        if (annualExportIncome > 400) {
+        const taxCap = (t.taxExemptionEuro && t.taxExemptionEuro > 0) ? t.taxExemptionEuro : 400;
+        const taxCapLabel = taxCap >= 800 ? '€800 (joint account, €400 each)' : '€' + taxCap;
+
+        if (annualExportIncome > taxCap) {
             notes.push({
                 icon: '🇮🇪',
-                title: 'You may pass the €400 export exemption',
-                body: 'Estimated export income of about €' + Math.round(annualExportIncome) + ' a year is above the €400 that is exempt from income tax, ' +
-                    'USC and PRSI (relief runs to end of 2028). Anything over €400 goes on your annual return — worth a word with Revenue or an accountant.'
+                title: 'You may pass the €' + taxCap + ' export exemption',
+                body: 'Estimated export income of about €' + Math.round(annualExportIncome) + ' a year is above the ' + taxCapLabel + ' exempt from income tax, ' +
+                    'USC and PRSI (relief runs to end of 2028). Anything over €' + taxCap + ' goes on your annual return — worth a word with Revenue or an accountant.'
             });
         } else if (t.exportEnabled) {
             notes.push({
                 icon: '🇮🇪',
                 title: 'Export income looks tax-free',
-                body: 'At roughly €' + Math.round(annualExportIncome) + ' a year you sit under the €400 microgeneration exemption from income tax, USC and PRSI, ' +
+                body: 'At roughly €' + Math.round(annualExportIncome) + ' a year you sit well under your ' + taxCapLabel + ' microgeneration exemption from income tax, USC and PRSI, ' +
                     'which runs to end of 2028. You need a smart meter and an NC6 registered with ESB Networks to be paid at all.'
             });
         }

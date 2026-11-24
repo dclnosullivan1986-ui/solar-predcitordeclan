@@ -1164,9 +1164,16 @@ footer {
                     <label for="rateExport">Export (CEG)</label>
                     <input type="number" id="rateExport" value="18.5" step="0.1" min="0" max="200">
                 </div>
-                <div class="field field-wide">
-                    <label for="standingCharge">Standing charge + PSO (€/day incl. VAT)</label>
+                <div class="field">
+                    <label for="standingCharge">Standing + PSO (€/day)</label>
                     <input type="number" id="standingCharge" value="1.11" step="0.01" min="0" max="10">
+                </div>
+                <div class="field">
+                    <label for="taxAllowance">Revenue tax-free cap</label>
+                    <select id="taxAllowance">
+                        <option value="800" selected>Joint account — €800/yr</option>
+                        <option value="400">Single account — €400/yr</option>
+                    </select>
                 </div>
             </div>
             <button id="btnRecalculate" class="btn btn-amber btn-block">Update the model</button>
@@ -3207,18 +3214,21 @@ window.EnergyModel = (function () {
             });
         }
 
-        if (annualExportIncome > 400) {
+        const taxCap = (t.taxExemptionEuro && t.taxExemptionEuro > 0) ? t.taxExemptionEuro : 400;
+        const taxCapLabel = taxCap >= 800 ? '€800 (joint account, €400 each)' : '€' + taxCap;
+
+        if (annualExportIncome > taxCap) {
             notes.push({
                 icon: '🇮🇪',
-                title: 'You may pass the €400 export exemption',
-                body: 'Estimated export income of about €' + Math.round(annualExportIncome) + ' a year is above the €400 that is exempt from income tax, ' +
-                    'USC and PRSI (relief runs to end of 2028). Anything over €400 goes on your annual return — worth a word with Revenue or an accountant.'
+                title: 'You may pass the €' + taxCap + ' export exemption',
+                body: 'Estimated export income of about €' + Math.round(annualExportIncome) + ' a year is above the ' + taxCapLabel + ' exempt from income tax, ' +
+                    'USC and PRSI (relief runs to end of 2028). Anything over €' + taxCap + ' goes on your annual return — worth a word with Revenue or an accountant.'
             });
         } else if (t.exportEnabled) {
             notes.push({
                 icon: '🇮🇪',
                 title: 'Export income looks tax-free',
-                body: 'At roughly €' + Math.round(annualExportIncome) + ' a year you sit under the €400 microgeneration exemption from income tax, USC and PRSI, ' +
+                body: 'At roughly €' + Math.round(annualExportIncome) + ' a year you sit well under your ' + taxCapLabel + ' microgeneration exemption from income tax, USC and PRSI, ' +
                     'which runs to end of 2028. You need a smart meter and an NC6 registered with ESB Networks to be paid at all.'
             });
         }
@@ -4070,6 +4080,7 @@ window.MeterModel = (function () {
                 peakRate: num('ratePeak', 40.95),
                 exportRate: num('rateExport', 18.5),
                 standingChargeEuroPerDay: num('standingCharge', 1.11),
+                taxExemptionEuro: num('taxAllowance', 800),
                 evStart: evWin.start,
                 evEnd: evWin.end,
                 exportEnabled: num('rateExport', 18.5) > 0
@@ -4100,7 +4111,7 @@ window.MeterModel = (function () {
         'systemAge', 'gridPhase', 'exportLimit', 'calibrationPct', 'array2Capacity', 'array2Tilt', 'array2Orientation',
         'dailyUsage', 'loadProfile', 'flexSchedule', 'batteryCapacity', 'batteryPower', 'batteryStrategy',
         'batteryCoupling', 'evKwh', 'evSessions', 'immersionKwh', 'rateDay', 'rateNight', 'rateEv',
-        'evWindowSelect', 'ratePeak', 'rateExport', 'standingCharge'];
+        'evWindowSelect', 'ratePeak', 'rateExport', 'standingCharge', 'taxAllowance'];
     const TOGGLE_IDS = ['array2Enabled', 'weatherAdjustedLoad', 'batteryEnabled', 'evEnabled', 'immersionEnabled'];
 
     function saveSettings() {
@@ -5211,22 +5222,24 @@ window.MeterModel = (function () {
         }
         $('meterKpis').innerHTML = kpiHtml;
 
-        // €400 Revenue CEG exemption tracker for the latest calendar year in the CSV
+        // Revenue CEG exemption tracker (€400 single / €800 joint account)
         const taxBar = $('meterTaxBar');
+        const taxCap = t.taxExemptionEuro || 800;
+        const taxLabel = taxCap >= 800 ? '€' + taxCap + ' Joint Revenue Tax-Free Allowance' : '€' + taxCap + ' Revenue Tax-Free Allowance';
         if (md.hasSolar && t.exportEnabled) {
-            const pct = Math.min(100, Math.round((ytdExportEuro / 400) * 100));
-            const remaining = Math.max(0, 400 - ytdExportEuro);
-            const barColor = ytdExportEuro >= 400 ? '#f43f5e' : (ytdExportEuro >= 300 ? '#f59e0b' : '#10b981');
+            const pct = Math.min(100, Math.round((ytdExportEuro / taxCap) * 100));
+            const remaining = Math.max(0, taxCap - ytdExportEuro);
+            const barColor = ytdExportEuro >= taxCap ? '#f43f5e' : (ytdExportEuro >= taxCap * 0.75 ? '#f59e0b' : '#10b981');
             taxBar.innerHTML =
                 '<div class="meter-tax-head">' +
-                '<span>🇮🇪 <strong>' + md.latestYear + '</strong> Real Export Income vs €400 Revenue Tax-Free Allowance</span>' +
-                '<strong>' + euro(ytdExportEuro) + ' / €400.00 (' + pct + '%)</strong>' +
+                '<span>🇮🇪 <strong>' + md.latestYear + '</strong> Real Export Income vs ' + taxLabel + '</span>' +
+                '<strong>' + euro(ytdExportEuro) + ' / €' + taxCap.toFixed(2) + ' (' + pct + '%)</strong>' +
                 '</div>' +
                 '<div class="split-track"><div class="split-fill" style="width:' + pct + '%;background:' + barColor + '"></div></div>' +
                 '<div style="font-size:0.72rem;color:var(--text-subtle);margin-top:6px;">' +
                 md.ytdExportKwh.toFixed(1) + ' kWh exported in ' + md.latestYear + ' at ' + t.exportRate.toFixed(1) + 'c/kWh — ' +
-                (ytdExportEuro >= 400
-                    ? 'above the €400 tax-free microgeneration threshold by ' + euro(ytdExportEuro - 400) + '.'
+                (ytdExportEuro >= taxCap
+                    ? 'above the €' + taxCap + ' tax-free microgeneration threshold by ' + euro(ytdExportEuro - taxCap) + '.'
                     : euro(remaining) + ' of tax-free headroom remaining in ' + md.latestYear + '.') +
                 '</div>';
             taxBar.style.display = '';

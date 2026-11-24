@@ -338,9 +338,16 @@
                     <label for="rateExport">Export (CEG)</label>
                     <input type="number" id="rateExport" value="18.5" step="0.1" min="0" max="200">
                 </div>
-                <div class="field field-wide">
-                    <label for="standingCharge">Standing charge + PSO (€/day incl. VAT)</label>
+                <div class="field">
+                    <label for="standingCharge">Standing + PSO (€/day)</label>
                     <input type="number" id="standingCharge" value="1.11" step="0.01" min="0" max="10">
+                </div>
+                <div class="field">
+                    <label for="taxAllowance">Revenue tax-free cap</label>
+                    <select id="taxAllowance">
+                        <option value="800" selected>Joint account — €800/yr</option>
+                        <option value="400">Single account — €400/yr</option>
+                    </select>
                 </div>
             </div>
             <button id="btnRecalculate" class="btn btn-amber btn-block">Update the model</button>
