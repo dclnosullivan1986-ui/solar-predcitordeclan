@@ -85,18 +85,29 @@ everything instead.
   sunny forecast week. Solar savings and battery arbitrage are projected separately, because one
   scales with sunshine and the other happens every night regardless.
 
-### 5. Fixes under the hood
+### 5. Accuracy & physics upgrades under the hood
 
-- **Beam transposition corrected.** Horizontal direct radiation was being applied to the tilted
-  plane directly. It now converts to DNI first, which was badly under-counting low winter sun.
-- **Time zones.** Open-Meteo returns local wall-clock strings with no zone suffix; parsing them
-  with `new Date()` used the *browser's* zone, quietly breaking sun position for anyone outside
-  Ireland. Timestamps are now parsed field by field and converted with the API's own UTC offset.
-- Requests ask for plane-of-array irradiance at your actual tilt and azimuth, with a fallback
-  request and then an offline demonstration week if the service can't be reached.
-- Inverter AC clipping, a wind-corrected cell temperature and low-light efficiency losses added.
-- Battery tracks solar and grid energy separately, so "run on your own solar" doesn't count kWh
-  you bought at 10c.
+- **Preceding-hour interval alignment.** Open-Meteo hourly radiation is the average over the
+  preceding hour `(H−1):00–H:00`. Solar geometry now uses the interval midpoint (`H − 30 min`)
+  and clear-sky irradiance integrates across the preceding hour via 4-point quadrature, eliminating
+  morning/afternoon phase drift and sunrise/sunset distortion.
+- **Spencer (1971) solar astronomy + Hay–Davies transposition + Martin–Ruiz IAM.** Replaces
+  single-term sun angles and isotropic sky assumptions with high-precision declination, equation of
+  time, Earth–Sun eccentricity, circumsolar diffuse brightening and AR-coated glass reflection losses.
+- **Faiman thermal model (m/s wind) + Sandia inverter curve.** Requests `wind_speed_unit=ms`
+  (fixing a km/h-vs-m/s wind-cooling mismatch), uses the PVGIS Faiman roof-mounted cell-temperature
+  model, applies a realistic part-load inverter efficiency curve, and automatically derates snow cover.
+- **Sky rating decoupled from shading and panel age.** Clearness index compares delivered vs
+  clear-sky POA irradiance directly so shaded or older roofs still get an honest sky verdict.
+- **Multi-model forecast confidence.** Runs ECMWF IFS, ICON-EU and UKMO UKV in parallel through the
+  same PV physics engine to display High / Moderate / Low confidence and a Low–High kWh envelope.
+- **Split roofs & location-specific 12-month yield.** True 50/50 East–West split and optional
+  second roof plane, plus a PVGIS-calibrated 12-month yield chart replacing the old flat `850 kWh/kWp`.
+- **Sequential 7-day battery SOC & tariff-priority dispatch.** Battery charge carries over day to
+  day across the week, and `SMART` mode preserves battery charge for Day/Peak hours instead of
+  draining it during cheaper Night hours.
+- **Pinpoint location accuracy.** Supports GPS lookup, direct `lat, lon` coordinates, all Irish
+  county Eircode routing keys, and an honest precision badge (`Exact`, `GPS`, `Town`, or `Routing-key area`).
 
 ---
 

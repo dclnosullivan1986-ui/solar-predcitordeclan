@@ -1,28 +1,27 @@
 /**
  * Irish Home Energy & Tariff Model
  *
- * Simulates one day hour-by-hour: solar generation, household load, flexible
- * loads (EV, immersion, battery), time-of-use import rates and Clean Export
+ * Simulates a 7-day forecast hour-by-hour with sequential battery state-of-charge
+ * carryover between days: solar generation, household load (with optional weather
+ * and heat-pump temperature sensitivity), flexible loads (EV, immersion, battery),
+ * tariff-priority battery discharge, time-of-use import rates and Clean Export
  * Guarantee income — then prices it against the same house with no solar.
- *
- * Defaults follow a typical Irish smart "EV / night" plan:
- *   Day    08:00–23:00   30.0 c/kWh
- *   Night  23:00–08:00   20.0 c/kWh
- *   EV     02:00–05:00   10.0 c/kWh
- *   Export (CEG)         18.5 c/kWh
  */
 
 window.EnergyModel = (function () {
     'use strict';
 
+    // Default matches Flogas DG1 Residential Smart EV (29% Off EV) incl. 9% VAT + PSO levy
+    // Ex-VAT rates from bill: Day €0.2914, Night €0.2263, Peak €0.3757, EV €0.0914,
+    // Standing €0.9731/day + PSO €1.46/mo (all +9% VAT), Export €0.1850/kWh (0% VAT).
     const DEFAULT_TARIFF = {
-        name: 'EV / night plan',
-        dayRate: 30.0,
-        nightRate: 20.0,
-        evRate: 10.0,
-        peakRate: 30.0,          // set above dayRate for smart tariffs with a 17:00–19:00 peak
+        name: 'Flogas Smart EV (02–05)',
+        dayRate: 31.76,
+        nightRate: 24.67,
+        evRate: 9.96,
+        peakRate: 40.95,
         exportRate: 18.5,
-        standingChargeEuroPerDay: 0.85,
+        standingChargeEuroPerDay: 1.11, // €1.06 standing + €0.05 PSO incl. 9% VAT
         dayStart: 8,
         dayEnd: 23,
         evStart: 2,
@@ -33,11 +32,32 @@ window.EnergyModel = (function () {
     };
 
     const TARIFF_PRESETS = {
+        FLOGAS_EV: {
+            name: 'Flogas Smart EV 29% Off (02–05)',
+            dayRate: 31.76, nightRate: 24.67, evRate: 9.96, peakRate: 40.95,
+            exportRate: 18.5, standingChargeEuroPerDay: 1.11,
+            dayStart: 8, dayEnd: 23, evStart: 2, evEnd: 5, peakStart: 17, peakEnd: 19,
+            exportEnabled: true
+        },
         EV_NIGHT: {
-            name: 'EV / night plan (default)',
+            name: 'Generic EV / night (02–05)',
             dayRate: 30.0, nightRate: 20.0, evRate: 10.0, peakRate: 30.0,
             exportRate: 18.5, standingChargeEuroPerDay: 0.85,
             dayStart: 8, dayEnd: 23, evStart: 2, evEnd: 5, peakStart: 17, peakEnd: 19,
+            exportEnabled: true
+        },
+        EV_4H: {
+            name: '4-hour EV plan (02–06)',
+            dayRate: 31.5, nightRate: 21.0, evRate: 8.5, peakRate: 31.5,
+            exportRate: 18.5, standingChargeEuroPerDay: 0.90,
+            dayStart: 8, dayEnd: 23, evStart: 2, evEnd: 6, peakStart: 17, peakEnd: 19,
+            exportEnabled: true
+        },
+        NIGHT_BOOST_2H: {
+            name: '2-hour night boost + peak (02–04)',
+            dayRate: 31.0, nightRate: 18.5, evRate: 10.0, peakRate: 36.0,
+            exportRate: 19.5, standingChargeEuroPerDay: 0.90,
+            dayStart: 8, dayEnd: 23, evStart: 2, evEnd: 4, peakStart: 17, peakEnd: 19,
             exportEnabled: true
         },
         SMART_PEAK: {
@@ -50,14 +70,14 @@ window.EnergyModel = (function () {
         STANDARD_24H: {
             name: 'Standard 24-hour rate',
             dayRate: 28.0, nightRate: 28.0, evRate: 28.0, peakRate: 28.0,
-            exportRate: 18.5, standingChargeEuroPerDay: 0.75,
+            exportRate: 18.5, standingChargeEuroPerDay: 0.80,
             dayStart: 0, dayEnd: 24, evStart: 2, evEnd: 2, peakStart: 17, peakEnd: 17,
             exportEnabled: true
         },
         NO_EXPORT: {
             name: 'No smart meter — export not paid',
-            dayRate: 30.0, nightRate: 20.0, evRate: 10.0, peakRate: 30.0,
-            exportRate: 0, standingChargeEuroPerDay: 0.85,
+            dayRate: 31.76, nightRate: 24.67, evRate: 9.96, peakRate: 40.95,
+            exportRate: 0, standingChargeEuroPerDay: 1.11,
             dayStart: 8, dayEnd: 23, evStart: 2, evEnd: 5, peakStart: 17, peakEnd: 19,
             exportEnabled: false
         }
@@ -95,6 +115,7 @@ window.EnergyModel = (function () {
 
     const DEFAULT_CONFIG = {
         dailyUsageKwh: 10.0,
+        weatherAdjustedLoad: false,    // When enabled: overcast/rainy + cold days lift base demand realistically
         loadProfile: 'EVENING_PEAK',
         battery: {
             enabled: true,
@@ -123,11 +144,11 @@ window.EnergyModel = (function () {
         },
         flexSchedule: 'CHEAP_NIGHT',   // CHEAP_NIGHT | SOLAR | ANYTIME
         tariff: DEFAULT_TARIFF,
-        gridCo2KgPerKwh: 0.28
+        gridCo2KgPerKwh: 0.255         // EirGrid / SEAI 2025 Irish grid average (~255 g CO2/kWh)
     };
 
     const STRATEGY_LABELS = {
-        SMART: 'Smart — forecast-led overnight charging',
+        SMART: 'Smart — forecast-led & peak-preserving',
         NIGHT_FIRST: 'Night-first — fill the battery every night',
         SOLAR_ONLY: 'Solar only — never charge from the grid'
     };
@@ -135,7 +156,12 @@ window.EnergyModel = (function () {
     /* ------------------------------------------------------------------ */
 
     function bandForHour(h, t) {
-        if (t.evEnd > t.evStart && h >= t.evStart && h < t.evEnd) return 'ev';
+        if (t.evEnd !== t.evStart) {
+            const inEv = t.evEnd > t.evStart
+                ? (h >= t.evStart && h < t.evEnd)
+                : (h >= t.evStart || h < t.evEnd);
+            if (inEv) return 'ev';
+        }
         if (t.peakEnd > t.peakStart && h >= t.peakStart && h < t.peakEnd && t.peakRate > t.dayRate) return 'peak';
         const inDay = t.dayEnd > t.dayStart
             ? (h >= t.dayStart && h < t.dayEnd)
@@ -170,13 +196,13 @@ window.EnergyModel = (function () {
         };
         place(windowHours);
         if (remaining > 0.0001 && spillHours && spillHours.length) place(spillHours);
-        // Anything still left simply has to run somewhere — put it at the cheapest remaining hour.
         if (remaining > 0.0001) out[windowHours[0] !== undefined ? windowHours[0] : 3] += remaining;
         return out;
     }
 
     function hoursInWindow(start, end) {
         const out = [];
+        if (start === end) return out;
         if (end > start) {
             for (let h = start; h < end; h++) out.push(h);
         } else {
@@ -186,11 +212,40 @@ window.EnergyModel = (function () {
         return out;
     }
 
+    /**
+     * Adjust base daily usage for weather when enabled:
+     *  - Rainy / overcast days add up to ~22% (indoor lighting, dryer, kettle — e.g. 10 -> 12.2 kWh)
+     *  - Heat pump homes scale with Heating Degree Days relative to mild 14°C baseline
+     */
+    function effectiveDailyUsage(cfg, day) {
+        let usage = cfg.dailyUsageKwh;
+        if (!cfg.weatherAdjustedLoad || !day) return usage;
+
+        // Cloud & rain uplift for everyday home usage
+        const cloudFactor = Math.max(0, Math.min(1, ((day.avgCloudCover || 50) - 25) / 75));
+        const rainBump = (day.rainMm || 0) >= 2 ? 0.08 : ((day.rainMm || 0) > 0.2 ? 0.04 : 0);
+        let mult = 1.0 + 0.16 * cloudFactor + rainBump; // ~1.0 on clear dry day, ~1.22–1.24 on rainy overcast day
+
+        // Heat pump cold-weather heating degree-day scaling
+        if (cfg.loadProfile === 'HEAT_PUMP' && day.tempAvg !== undefined && day.tempAvg !== null) {
+            const hddDelta = 12 - day.tempAvg; // mild Irish spring/autumn ~12°C
+            // Each °C colder adds ~3.5% heating draw (capped to 0.75x summer .. 1.65x deep winter)
+            const tempMult = Math.max(0.75, Math.min(1.65, 1.0 + hddDelta * 0.035));
+            mult = tempMult * (1.0 + 0.06 * cloudFactor);
+        }
+        return Math.round(usage * mult * 100) / 100;
+    }
+
     /** Build the 24-hour load arrays for a configuration. */
     function buildLoads(cfg, day) {
         const t = cfg.tariff;
-        const profile = (LOAD_PROFILES[cfg.loadProfile] || LOAD_PROFILES.EVENING_PEAK).shape;
-        const base = profile.map(function (f) { return f * cfg.dailyUsageKwh; });
+        const hasCustom = cfg.loadProfile === 'CUSTOM_METER' &&
+            Array.isArray(cfg.customHourlyShape) && cfg.customHourlyShape.length === 24;
+        const profile = hasCustom
+            ? cfg.customHourlyShape
+            : (LOAD_PROFILES[cfg.loadProfile] || LOAD_PROFILES.EVENING_PEAK).shape;
+        const adjUsage = effectiveDailyUsage(cfg, day);
+        const base = profile.map(function (f) { return f * adjUsage; });
 
         const evDaily = cfg.ev.enabled
             ? (cfg.ev.kwhPerSession * cfg.ev.sessionsPerWeek) / 7
@@ -217,13 +272,15 @@ window.EnergyModel = (function () {
             if (evDaily > 0) evShape = scheduleLoad(evDaily, evening, cfg.ev.chargerKw, nightSpill);
             if (immersionDaily > 0) immersionShape = scheduleLoad(immersionDaily, [17, 18, 19], cfg.immersion.elementKw, nightSpill);
         } else {
-            if (evDaily > 0) evShape = scheduleLoad(evDaily, cheapWindow, cfg.ev.chargerKw, nightSpill);
-            if (immersionDaily > 0) immersionShape = scheduleLoad(immersionDaily, cheapWindow, cfg.immersion.elementKw, nightSpill);
+            const primaryCheap = cheapWindow.length ? cheapWindow : nightSpill;
+            if (evDaily > 0) evShape = scheduleLoad(evDaily, primaryCheap, cfg.ev.chargerKw, nightSpill);
+            if (immersionDaily > 0) immersionShape = scheduleLoad(immersionDaily, primaryCheap, cfg.immersion.elementKw, nightSpill);
         }
 
         const total = base.map(function (v, i) { return v + evShape[i] + immersionShape[i]; });
         return {
             base: base, ev: evShape, immersion: immersionShape, total: total,
+            baseDaily: adjUsage,
             evDaily: evDaily, immersionDaily: immersionDaily,
             totalDaily: total.reduce(function (a, b) { return a + b; }, 0)
         };
@@ -252,7 +309,7 @@ window.EnergyModel = (function () {
     }
 
     /* ------------------------------------------------------------------ *
-     * Core hourly dispatch
+     * Core hourly dispatch with tariff-priority battery discharge
      * ------------------------------------------------------------------ */
 
     function runDispatch(gen, load, cfg, opts) {
@@ -264,11 +321,18 @@ window.EnergyModel = (function () {
         const usable = useBattery ? cfg.battery.capacityKwh * (1 - cfg.battery.minSocPct / 100) : 0;
         const chgEff = Math.sqrt(cfg.battery.roundTripEff);
         const dchEff = Math.sqrt(cfg.battery.roundTripEff);
-        const strategy = cfg.battery.strategy;
+        const smartReserve = (cfg.battery.strategy === 'SMART');
 
-        // The battery holds a mix of cheap grid energy and solar. Tracking the
-        // two separately is what makes the self-sufficiency figure honest —
-        // energy bought at 10c and discharged later is not self-supply.
+        // Precompute hourly bands and rates so SMART dispatch can preserve battery
+        // charge for expensive Day/Peak hours instead of draining it at cheaper Night hours.
+        const bands = [];
+        const rates = [];
+        for (let h = 0; h < 24; h++) {
+            const b = bandForHour(h, t);
+            bands.push(b);
+            rates.push(rateForBand(b, t));
+        }
+
         let socSolar = Math.max(0, opts.startSocSolar || 0);
         let socGrid = Math.max(0, opts.startSocGrid || 0);
         if (socSolar + socGrid > usable) {
@@ -278,23 +342,25 @@ window.EnergyModel = (function () {
         let soc = socSolar + socGrid;
 
         const rows = [];
-        let totals = {
+        const totals = {
             generation: 0, directUse: 0, solarToBattery: 0, exported: 0,
             gridImport: 0, gridToBattery: 0, batteryToLoad: 0, batterySolarToLoad: 0, load: 0,
             clippedRecovered: 0, clippedLost: 0, curtailed: 0,
             importCost: 0, exportIncome: 0,
+            startSoc: soc,
             byBand: { day: { kwh: 0, cost: 0 }, night: { kwh: 0, cost: 0 }, ev: { kwh: 0, cost: 0 }, peak: { kwh: 0, cost: 0 } }
         };
 
         for (let h = 0; h < 24; h++) {
-            const band = bandForHour(h, t);
-            const rate = rateForBand(band, t);
+            const band = bands[h];
+            const rate = rates[h];
             let g = gen[h];
             let l = load[h];
             const row = {
                 hour: h, band: band, rate: rate, generation: gen[h], load: load[h],
                 directUse: 0, solarToBattery: 0, exported: 0,
-                gridImport: 0, gridToBattery: 0, batteryToLoad: 0, soc: 0, cost: 0,
+                gridImport: 0, gridToBattery: 0, batteryToLoad: 0, batterySolarToLoad: 0,
+                soc: 0, cost: 0,
                 clippedRecovered: 0, clippedLost: 0, curtailed: 0
             };
             let spare = dcSpare[h] || 0;
@@ -304,7 +370,7 @@ window.EnergyModel = (function () {
             g -= direct; l -= direct;
             row.directUse = direct;
 
-            // 2. Charge the battery from the grid inside the cheap window.
+            // 2. Planned grid charge (during cheap EV/night hours).
             if (useBattery && opts.gridChargePlan[h] > 0) {
                 const room = usable - soc;
                 const take = Math.min(opts.gridChargePlan[h], cfg.battery.maxChargeKw, room / chgEff);
@@ -316,10 +382,7 @@ window.EnergyModel = (function () {
                 }
             }
 
-            // 3. Surplus solar tops up the battery. A DC-coupled hybrid gets first
-            //    call on the energy the inverter had to clip, because that never has
-            //    to cross the AC limit — this is why a battery recovers clipping
-            //    losses on an oversized array and an AC-coupled one does not.
+            // 3. Surplus solar tops up the battery (DC-coupled catches clipped power first).
             if (useBattery) {
                 let headroomKw = Math.max(0, cfg.battery.maxChargeKw - row.gridToBattery);
 
@@ -349,20 +412,40 @@ window.EnergyModel = (function () {
             }
             row.clippedLost = spare;
 
-            // 4. Whatever solar is left goes to the grid, up to the connection's
-            //    export limit. Beyond that the inverter has to throttle back and
-            //    the energy is simply never made.
+            // 4. Remaining solar exports to grid up to the NC6/connection export cap.
             if (g > 0) {
                 row.exported = Math.min(g, exportLimit);
                 row.curtailed = g - row.exported;
                 g = 0;
             }
 
-            // 5. Battery covers the rest of the load — but never during the cheap
-            //    window, where importing is cheaper than spending stored energy.
+            // 5. Battery discharge — skip cheap EV window, and in SMART mode reserve
+            //    enough stored energy for upcoming higher-rate hours (e.g. hold charge
+            //    past 05:00–08:00 20c night or 15:00 29c day to cover 17:00–19:00 42c peak).
             if (useBattery && l > 0 && band !== 'ev' && soc > 0) {
-                const give = Math.min(l, cfg.battery.maxDischargeKw, soc * dchEff);
-                if (give > 0) {
+                let availableForNow = soc * dchEff;
+
+                if (smartReserve) {
+                    // Check future hours today until the next cheap charge window (or midnight)
+                    let higherRateNeed = 0;
+                    let futureSolarSurplus = 0;
+                    for (let f = h + 1; f < 24; f++) {
+                        if (opts.gridChargePlan[f] > 0) break; // battery will refill then
+                        const netDeficit = Math.max(0, load[f] - gen[f]);
+                        const netSurplus = Math.max(0, gen[f] - load[f]);
+                        futureSolarSurplus += netSurplus * chgEff * dchEff;
+                        if (rates[f] > rate + 0.5) {
+                            // Need that won't already be met by incoming solar before then
+                            const uncovered = Math.max(0, netDeficit - futureSolarSurplus);
+                            higherRateNeed += uncovered;
+                            futureSolarSurplus = Math.max(0, futureSolarSurplus - netDeficit);
+                        }
+                    }
+                    availableForNow = Math.max(0, availableForNow - higherRateNeed);
+                }
+
+                const give = Math.min(l, cfg.battery.maxDischargeKw, availableForNow);
+                if (give > 0.0001) {
                     const drawn = give / dchEff;
                     const solarShare = soc > 0 ? socSolar / soc : 0;
                     socSolar = Math.max(0, socSolar - drawn * solarShare);
@@ -374,7 +457,7 @@ window.EnergyModel = (function () {
                 }
             }
 
-            // 6. Anything still unserved is imported.
+            // 6. Anything still unserved is imported from the grid.
             if (l > 0) {
                 row.gridImport += l;
                 l = 0;
@@ -391,7 +474,7 @@ window.EnergyModel = (function () {
             totals.gridImport += row.gridImport;
             totals.gridToBattery += row.gridToBattery;
             totals.batteryToLoad += row.batteryToLoad;
-            totals.batterySolarToLoad += (row.batterySolarToLoad || 0);
+            totals.batterySolarToLoad += row.batterySolarToLoad;
             totals.clippedRecovered += row.clippedRecovered;
             totals.clippedLost += row.clippedLost;
             totals.curtailed += row.curtailed;
@@ -414,58 +497,85 @@ window.EnergyModel = (function () {
         return totals;
     }
 
-    /** Spread a target overnight purchase across the cheap-rate hours. */
+    /** Spread a target overnight purchase across the cheapest overnight hours (EV first, then Night if cheaper than Day). */
     function planForTarget(target, cfg) {
         const plan = new Array(24).fill(0);
-        const window = hoursInWindow(cfg.tariff.evStart, cfg.tariff.evEnd);
-        if (!window.length) return plan;
+        const t = cfg.tariff;
+        const evWindow = hoursInWindow(t.evStart, t.evEnd);
+        let chargeHours = evWindow.slice();
+
+        // If no EV window or EV window isn't enough and Night rate still beats Day rate after losses, allow night spill
+        const effDayBreakEven = t.dayRate * cfg.battery.roundTripEff;
+        if (t.nightRate < effDayBreakEven - 1.0 && (!t.exportEnabled || t.nightRate < t.exportRate * cfg.battery.roundTripEff + 5)) {
+            const nightHours = hoursInWindow(t.dayEnd, t.dayStart).filter(function (h) {
+                return chargeHours.indexOf(h) === -1 && h < 8; // prefer pre-dawn hours
+            });
+            chargeHours = chargeHours.concat(nightHours);
+        }
+
+        if (!chargeHours.length) return plan;
         let remaining = target;
-        for (let i = 0; i < window.length && remaining > 0.001; i++) {
+        for (let i = 0; i < chargeHours.length && remaining > 0.001; i++) {
             const put = Math.min(cfg.battery.maxChargeKw, remaining);
-            plan[window[i]] = put;
+            plan[chargeHours[i]] = put;
             remaining -= put;
         }
         return plan;
     }
 
     /**
-     * Decide how much to buy into the battery during the cheap window.
-     *
-     * SMART searches the whole range and keeps the cheapest, which is why it
-     * can never lose to the other two. What it lands on depends on the day:
-     * a washout wants a full battery bought at the night rate, while a clear
-     * day may want the battery left empty so the panels can fill it and the
-     * surplus can be exported.
+     * Decide how much to buy into the battery overnight.
+     * SMART searches 20 levels (5% steps) and values end-of-day stored energy fairly
+     * so strategies never game midnight boundary conditions.
      */
-    function buildGridChargePlan(gen, load, cfg, dcSpare) {
+    function buildGridChargePlan(gen, load, cfg, dcSpare, startSocSolar, startSocGrid) {
         const plan = new Array(24).fill(0);
         if (!cfg.battery.enabled || cfg.battery.capacityKwh <= 0) return plan;
         if (cfg.battery.strategy === 'SOLAR_ONLY') return plan;
 
         const usable = cfg.battery.capacityKwh * (1 - cfg.battery.minSocPct / 100);
-        if (cfg.battery.strategy === 'NIGHT_FIRST') return planForTarget(usable, cfg);
+        const chgEff = Math.sqrt(cfg.battery.roundTripEff);
+        if (cfg.battery.strategy === 'NIGHT_FIRST') return planForTarget(usable / chgEff, cfg);
+
         dcSpare = dcSpare || new Array(24).fill(0);
+        const hasInitial = (startSocSolar !== undefined && startSocGrid !== undefined);
+        // Value of stored energy left at midnight (valued at cheapest recharge cost)
+        const storedValueRate = Math.min(cfg.tariff.evRate, cfg.tariff.nightRate) / 100;
 
         let best = null;
-        const steps = 10;
+        const steps = 20;
+        const maxGridTarget = usable / chgEff;
         for (let i = 0; i <= steps; i++) {
-            const target = usable * (i / steps);
+            const target = maxGridTarget * (i / steps);
             const candidate = planForTarget(target, cfg);
-            let sim = runDispatch(gen, load, cfg, { useBattery: true, gridChargePlan: candidate, dcSpare: dcSpare, startSocSolar: 0, startSocGrid: 0 });
-            sim = runDispatch(gen, load, cfg, {
-                useBattery: true, gridChargePlan: candidate, dcSpare: dcSpare,
-                startSocSolar: sim.endSocSolar, startSocGrid: sim.endSocGrid
-            });
-            if (!best || sim.netCost < best.cost - 1e-9) best = { cost: sim.netCost, plan: candidate };
+            let sim;
+            if (hasInitial) {
+                sim = runDispatch(gen, load, cfg, {
+                    useBattery: true, gridChargePlan: candidate, dcSpare: dcSpare,
+                    startSocSolar: startSocSolar, startSocGrid: startSocGrid
+                });
+            } else {
+                sim = runDispatch(gen, load, cfg, { useBattery: true, gridChargePlan: candidate, dcSpare: dcSpare, startSocSolar: 0, startSocGrid: 0 });
+                sim = runDispatch(gen, load, cfg, {
+                    useBattery: true, gridChargePlan: candidate, dcSpare: dcSpare,
+                    startSocSolar: sim.endSocSolar, startSocGrid: sim.endSocGrid
+                });
+            }
+            // Effective economic cost accounts for net change in stored battery value
+            const socDeltaValue = (sim.endSoc - sim.startSoc) * storedValueRate;
+            const effectiveCost = sim.netCost - socDeltaValue;
+            if (!best || effectiveCost < best.cost - 1e-9) {
+                best = { cost: effectiveCost, plan: candidate };
+            }
         }
         return best ? best.plan : plan;
     }
 
     /* ------------------------------------------------------------------ *
-     * Day simulation
+     * Single-day and Sequential 7-day simulation
      * ------------------------------------------------------------------ */
 
-    function simulateDay(day, config) {
+    function simulateDay(day, config, initSoc) {
         const cfg = mergeConfig(config);
         const gen = generationByHour(day);
         const dcSpare = clippedByHour(day);
@@ -474,15 +584,27 @@ window.EnergyModel = (function () {
         const zeroGen = new Array(24).fill(0);
         const emptyPlan = new Array(24).fill(0);
 
-        const plan = buildGridChargePlan(gen, load, cfg, dcSpare);
+        const hasInit = !!(initSoc && initSoc.solar !== undefined);
+        const plan = buildGridChargePlan(
+            gen, load, cfg, dcSpare,
+            hasInit ? initSoc.solar : undefined,
+            hasInit ? initSoc.grid : undefined
+        );
 
-        // Two passes: carry yesterday's closing charge into today so the
-        // opening state of charge is self-consistent rather than assumed empty.
-        let result = runDispatch(gen, load, cfg, { useBattery: true, gridChargePlan: plan, dcSpare: dcSpare, startSocSolar: 0, startSocGrid: 0 });
-        result = runDispatch(gen, load, cfg, {
-            useBattery: true, gridChargePlan: plan, dcSpare: dcSpare,
-            startSocSolar: result.endSocSolar, startSocGrid: result.endSocGrid
-        });
+        let result;
+        if (hasInit) {
+            result = runDispatch(gen, load, cfg, {
+                useBattery: true, gridChargePlan: plan, dcSpare: dcSpare,
+                startSocSolar: initSoc.solar, startSocGrid: initSoc.grid
+            });
+        } else {
+            // Self-consistent two-pass steady-state warm start for Day 0 / isolated day
+            result = runDispatch(gen, load, cfg, { useBattery: true, gridChargePlan: plan, dcSpare: dcSpare, startSocSolar: 0, startSocGrid: 0 });
+            result = runDispatch(gen, load, cfg, {
+                useBattery: true, gridChargePlan: plan, dcSpare: dcSpare,
+                startSocSolar: result.endSocSolar, startSocGrid: result.endSocGrid
+            });
+        }
 
         // Counterfactuals: the same house with no PV, and with PV but no storage.
         const noSolar = runDispatch(zeroGen, load, cfg, { useBattery: false, gridChargePlan: emptyPlan });
@@ -493,9 +615,13 @@ window.EnergyModel = (function () {
         const solarContribution = noSolar.netCost - solarNoBattery.netCost;
 
         const selfSufficiency = loads.totalDaily > 0 ? result.solarServedLoad / loads.totalDaily : 0;
-        const selfConsumptionRate = result.generation > 0
-            ? (result.directUse + result.solarToBattery) / result.generation
+        const totalSolarHarvested = result.generation + result.clippedRecovered;
+        const selfConsumptionRate = totalSolarHarvested > 0
+            ? Math.min(1, (result.directUse + result.solarToBattery) / totalSolarHarvested)
             : 0;
+
+        // Honest CO2 avoided: ONLY solar-sourced energy (direct + solar-from-battery + exported)
+        const solarAvoidedKwh = result.directUse + result.batterySolarToLoad + result.exported;
 
         return {
             date: day.date,
@@ -522,25 +648,44 @@ window.EnergyModel = (function () {
             clippedLostKwh: round2(result.clippedLost),
             curtailedKwh: round2(result.curtailed),
             lostKwh: round2(result.clippedLost + result.curtailed),
-            lostValue: round2(result.clippedLost * (cfg.tariff.exportEnabled ? cfg.tariff.exportRate : 0) / 100 +
-                result.curtailed * (cfg.tariff.exportEnabled ? cfg.tariff.exportRate : 0) / 100),
+            lostValue: round2((result.clippedLost + result.curtailed) * (cfg.tariff.exportEnabled ? cfg.tariff.exportRate : 0) / 100),
             noBatteryLostKwh: round2(solarNoBattery.clippedLost + solarNoBattery.curtailed),
             batteryThroughputKwh: round2(result.batteryToLoad),
             gridToBatteryKwh: round2(result.gridToBattery),
+            startSocKwh: round2(result.startSoc),
+            endSocKwh: round2(result.endSoc),
             selfSufficiencyPct: Math.max(0, Math.min(100, Math.round(selfSufficiency * 100))),
-            selfConsumptionPct: Math.round(selfConsumptionRate * 100),
-            co2AvoidedKg: round2((result.directUse + result.batteryToLoad + result.exported) * cfg.gridCo2KgPerKwh),
+            selfConsumptionPct: Math.max(0, Math.min(100, Math.round(selfConsumptionRate * 100))),
+            co2AvoidedKg: round2(solarAvoidedKwh * cfg.gridCo2KgPerKwh),
             byBand: result.byBand
         };
     }
 
-    /** Run every battery strategy so the cheapest one can be recommended. */
-    function compareStrategies(day, config) {
+    /**
+     * Simulate a full 7-day forecast sequentially so each day's closing battery
+     * charge (solar + grid mix) carries honestly into the next day.
+     */
+    function simulateWeek(days, config) {
+        const sims = [];
+        let carrySoc = null;
+        for (let i = 0; i < days.length; i++) {
+            const sim = simulateDay(days[i], config, carrySoc);
+            sims.push(sim);
+            carrySoc = {
+                solar: sim.result.endSocSolar,
+                grid: sim.result.endSocGrid
+            };
+        }
+        return sims;
+    }
+
+    /** Run every battery strategy on the selected day (with the same opening SOC) so the cheapest can be recommended. */
+    function compareStrategies(day, config, initSoc) {
         const out = [];
         ['SMART', 'NIGHT_FIRST', 'SOLAR_ONLY'].forEach(function (s) {
             const cfg = mergeConfig(config);
             cfg.battery.strategy = s;
-            const sim = simulateDay(day, cfg);
+            const sim = simulateDay(day, cfg, initSoc);
             out.push({
                 strategy: s,
                 label: STRATEGY_LABELS[s],
@@ -560,17 +705,13 @@ window.EnergyModel = (function () {
 
     const NC6_LIMIT = { SINGLE: 6.0, THREE: 11.0 };
 
-    /**
-     * Grade the physical setup: array against inverter, inverter against the
-     * ESB Networks connection limit, battery against the surplus it has to
-     * catch, and roof against the best pitch and facing for the latitude.
-     */
     function assessSystem(days, sims, solarCfg, config) {
         const cfg = mergeConfig(config);
         const out = [];
         if (!days.length) return out;
 
-        const kwp = solarCfg.systemCapacityKwp;
+        const SM = window.SolarModel;
+        const kwp = SM && SM.totalArrayKwp ? SM.totalArrayKwp(solarCfg) : solarCfg.systemCapacityKwp;
         const inv = solarCfg.inverterKwAc;
         const ratio = kwp / inv;
         const phase = cfg.grid.phase;
@@ -579,7 +720,6 @@ window.EnergyModel = (function () {
         const batt = cfg.battery;
 
         const n = days.length;
-        const genKwh = days.reduce(function (a, d) { return a + d.totalKwh; }, 0);
         const dcKwh = days.reduce(function (a, d) { return a + (d.dcPotentialKwh || d.totalKwh); }, 0);
         const clipKwh = days.reduce(function (a, d) { return a + (d.clippedKwh || 0); }, 0);
         const recovered = sims.reduce(function (a, s) { return a + (s.clippedRecoveredKwh || 0); }, 0);
@@ -587,7 +727,6 @@ window.EnergyModel = (function () {
         const curtailed = sims.reduce(function (a, s) { return a + (s.curtailedKwh || 0); }, 0);
         const noBatteryLost = sims.reduce(function (a, s) { return a + (s.noBatteryLostKwh || 0); }, 0);
         const clipPct = dcKwh > 0 ? (clipKwh / dcKwh) * 100 : 0;
-        const lostPct = dcKwh > 0 ? (lost / dcKwh) * 100 : 0;
         const rate = cfg.tariff.exportEnabled ? cfg.tariff.exportRate : cfg.tariff.dayRate;
 
         const peakSurplus = sims.reduce(function (m, s) {
@@ -605,8 +744,8 @@ window.EnergyModel = (function () {
             out.push({
                 level: 'watch', title: 'Inverter is larger than the array',
                 metric: ratio.toFixed(2) + ':1 DC to AC',
-                body: kwp + ' kWp behind a ' + inv + ' kW inverter. The inverter will never see its rated output, so you have paid ' +
-                    'for headroom that does nothing. Irish light suits about 1.2 to 1.3, which would be roughly ' +
+                body: kwp.toFixed(1) + ' kWp behind a ' + inv + ' kW inverter. The inverter will never see its rated output, so you have paid ' +
+                    'for headroom that does nothing. Irish light suits about 1.2 to 1.35, which would be roughly ' +
                     (inv * 1.25).toFixed(1) + ' kWp of panels on this inverter.'
             });
         } else if (clipPct < 1.5 && ratio < 1.15) {
@@ -629,7 +768,7 @@ window.EnergyModel = (function () {
             out.push({
                 level: 'good', title: 'Oversized array, and it is paying off',
                 metric: ratio.toFixed(2) + ':1, ' + clipPct.toFixed(1) + '% clipped',
-                body: kwp + ' kWp behind a ' + inv + ' kW inverter loses ' + clipKwh.toFixed(1) + ' kWh a week to clipping, about ' +
+                body: kwp.toFixed(1) + ' kWp behind a ' + inv + ' kW inverter loses ' + clipKwh.toFixed(1) + ' kWh a week to clipping, about ' +
                     euroStr(clipValue) + '. That is a small price for the output those extra panels bring in on cloudy days, which is ' +
                     'most days in Ireland. Going up to ' + nc6Limit.toFixed(1) + ' kW would stay inside NC6 if you ever want to recover it.'
             });
@@ -664,8 +803,7 @@ window.EnergyModel = (function () {
                 level: 'issue', title: 'Above the NC6 ceiling',
                 metric: inv + ' kW vs ' + nc6Limit.toFixed(1) + ' kW limit',
                 body: 'An inverter of this rating needs the NC7 mini-generation route rather than NC6: a connection fee, and a formal ' +
-                    'connection offer from ESB Networks before you can energise. Since 31 May 2023 anything rated over 25 A single phase ' +
-                    'is no longer accepted under the inform-and-fit process. Export limiting the inverter down to ' + nc6Limit.toFixed(1) +
+                    'connection offer from ESB Networks before you can energise. Export limiting the inverter down to ' + nc6Limit.toFixed(1) +
                     ' kW is the usual way round it.'
             });
         }
@@ -713,9 +851,8 @@ window.EnergyModel = (function () {
                     : (recovered > 0.1
                         ? 'The battery charges from the DC side, so it picks up energy the inverter had to clip as well as ordinary surplus. ' +
                           'It is saving ' + saved.toFixed(1) + ' kWh a week that would otherwise be lost, about ' + euroStr(saved * rate / 100) + '.'
-                        : 'A DC-coupled battery can absorb clipped energy, but yours is already full by the time clipping happens around midday — ' +
-                          'it fills overnight on the cheap rate and tops up from the morning sun. More capacity, or a faster charge rate, ' +
-                          'would be needed before it could catch any of the ' + clipKwh.toFixed(1) + ' kWh clipped this week.')
+                        : 'A DC-coupled battery can absorb clipped energy, but yours is already full by the time clipping happens around midday. ' +
+                          'More capacity, or leaving headroom overnight on clear days, would catch some of the ' + clipKwh.toFixed(1) + ' kWh clipped this week.')
             });
         }
 
@@ -743,32 +880,40 @@ window.EnergyModel = (function () {
                     level: 'watch', title: 'Battery charges slower than your peak surplus',
                     metric: batt.maxChargeKw + ' kW charge vs ' + peakSurplus.toFixed(1) + ' kW peak surplus',
                     body: 'At midday the panels make more than the battery can take, so the excess goes straight out to the grid ' +
-                        'whether the battery is full or not. It also means the overnight cheap window fills the pack more slowly — ' +
-                        'at ' + batt.maxChargeKw + ' kW you can only move ' + (batt.maxChargeKw * 3).toFixed(1) + ' kWh in a three-hour window.'
+                        'whether the battery is full or not. At ' + batt.maxChargeKw + ' kW you can move ' +
+                        (batt.maxChargeKw * Math.max(1, hoursInWindow(cfg.tariff.evStart, cfg.tariff.evEnd).length)).toFixed(1) +
+                        ' kWh inside your cheap EV window.'
                 });
             }
         }
 
         /* 6 ── roof pitch and facing ─────────────────────────────────── */
         const lat = solarCfg.latitude, lon = solarCfg.longitude;
-        const mine = window.SolarModel.annualTiltFactor(lat, lon, solarCfg.panelTiltDeg, solarCfg.panelAzimuthDeg);
-        const best = window.SolarModel.bestTiltFor(lat, lon);
-        const pct = best.value > 0 ? (mine / best.value) * 100 : 100;
-        if (pct >= 97) {
+        const planes = SM && SM.getArrayPlanes ? SM.getArrayPlanes(solarCfg) : [{ capacityKwp: kwp, tiltDeg: solarCfg.panelTiltDeg, azimuthDeg: solarCfg.panelAzimuthDeg }];
+        let weightedMine = 0;
+        planes.forEach(function (p) {
+            weightedMine += SM.annualTiltFactor(lat, lon, p.tiltDeg, p.azimuthDeg) * (p.capacityKwp / kwp);
+        });
+        const best = SM.bestTiltFor(lat, lon);
+        const pct = best.value > 0 ? (weightedMine / best.value) * 100 : 100;
+        const isSplit = planes.length > 1;
+        if (pct >= 96) {
             out.push({
                 level: 'good', title: 'Roof pitch and facing are close to ideal',
                 metric: Math.round(pct) + '% of the best possible',
                 body: 'At this latitude the optimum is around ' + best.tilt + '° facing ' + Math.round(best.azimuth) +
-                    '°. Yours is within a few percent, which is as good as it gets without moving the house.'
+                    '° (due South). Yours is within a few percent, which is as good as it gets without moving the house.'
             });
         } else {
             out.push({
-                level: pct < 85 ? 'issue' : 'watch',
-                title: 'Roof is off the best pitch and facing',
-                metric: Math.round(pct) + '% of the best possible',
-                body: 'Best here would be about ' + best.tilt + '° facing ' + Math.round(best.azimuth) + '°, so you are giving up roughly ' +
-                    Math.round(100 - pct) + '%. Worth knowing rather than worth fixing — but it does mean a west-facing array shifts output ' +
-                    'later in the day, which suits an evening-peak house and hurts less than the raw number suggests.'
+                level: pct < 82 ? 'issue' : 'watch',
+                title: isSplit ? 'Split-plane array trades peak for a wider day' : 'Roof is off the best pitch and facing',
+                metric: Math.round(pct) + '% of south optimum',
+                body: 'Best annual total here is about ' + best.tilt + '° facing ' + Math.round(best.azimuth) + '°, so you give up roughly ' +
+                    Math.round(100 - pct) + '% of peak-year kWh. ' +
+                    (isSplit
+                        ? 'However, a split roof spreads generation across morning and evening, cutting inverter clipping and improving direct self-consumption.'
+                        : 'A west-facing roof shifts output into the late afternoon and evening, which suits evening-peak Irish homes and hurts less than the raw kWh figure suggests.')
             });
         }
 
@@ -783,16 +928,27 @@ window.EnergyModel = (function () {
             });
         }
 
+        /* 8 ── snow alert if forecast includes snow ──────────────────── */
+        const snowDays = days.filter(function (d) { return (d.snowDepthCm || 0) >= 1.5; });
+        if (snowDays.length) {
+            out.push({
+                level: 'watch',
+                title: 'Snow cover forecast this week',
+                metric: snowDays.length + ' day' + (snowDays.length > 1 ? 's' : '') + ' derated',
+                body: 'Snow lying on the glass sharply cuts output until it melts or slides off. The model has automatically derated the affected hours.'
+            });
+        }
+
         return out;
     }
 
     function euroStr(n) { return '€' + Math.abs(n).toFixed(2); }
 
     /* ------------------------------------------------------------------ *
-     * Irish context notes
+     * Irish context notes (now backed by physics-based annual yield!)
      * ------------------------------------------------------------------ */
 
-    function buildInsights(sims, config, systemCapacityKwp) {
+    function buildInsights(sims, config, systemCapacityKwp, annualEstimate) {
         const cfg = mergeConfig(config);
         const t = cfg.tariff;
         const notes = [];
@@ -803,24 +959,27 @@ window.EnergyModel = (function () {
         const weekGen = sims.reduce(function (a, s) { return a + s.generationKwh; }, 0);
         const weekSolar = sims.reduce(function (a, s) { return a + s.solarContribution; }, 0);
         const weekBattery = sims.reduce(function (a, s) { return a + s.batteryContribution; }, 0);
+        const weekCo2 = sims.reduce(function (a, s) { return a + s.co2AvoidedKg; }, 0);
 
-        // Two different things are being extrapolated, so they scale differently.
-        // Solar savings track annual yield; battery price arbitrage happens every
-        // night whatever the weather. Extrapolating a July forecast week as a whole
-        // would badly overstate the year.
-        const annualGenKwh = systemCapacityKwp * 850;
+        const annualGenKwh = (annualEstimate && annualEstimate.annualKwh > 0)
+            ? annualEstimate.annualKwh
+            : systemCapacityKwp * 870;
+        const specificYield = (annualEstimate && annualEstimate.specificYield > 0)
+            ? annualEstimate.specificYield
+            : Math.round(annualGenKwh / Math.max(0.1, systemCapacityKwp));
+
         const annualSolarSaving = weekGen > 0 ? (weekSolar / weekGen) * annualGenKwh : 0;
         const annualBatterySaving = (weekBattery / n) * 365;
         const annualSaving = annualSolarSaving + annualBatterySaving;
         const annualExportIncome = weekGen > 0 ? (weekExport / weekGen) * annualGenKwh : 0;
 
-        if (t.exportEnabled && t.evRate < t.exportRate) {
+        if (t.exportEnabled && t.evEnd !== t.evStart && t.evRate < t.exportRate) {
             notes.push({
                 icon: '🧮',
                 title: 'Your cheap-rate hours beat your own solar',
                 body: 'Grid at ' + t.evRate.toFixed(1) + 'c between ' + pad(t.evStart) + ':00 and ' + pad(t.evEnd) +
                     ':00 costs less than the ' + t.exportRate.toFixed(1) + 'c you get paid to export. So the battery, EV and immersion are ' +
-                    'cheaper to run overnight, and daytime surplus is worth more sold than stored. The forecast tells you how much surplus to expect.'
+                    'cheaper to run overnight, and daytime surplus is worth more sold than stored.'
             });
         }
 
@@ -829,7 +988,7 @@ window.EnergyModel = (function () {
                 icon: '🔌',
                 title: 'No export payment — self-consumption is everything',
                 body: 'With nothing paid for export, every surplus kWh is wasted unless you use it. Shift the immersion and EV into the sunny hours ' +
-                    'instead of 02:00–05:00, and get a smart meter and NC6 registration in place so the Clean Export Guarantee can start paying you.'
+                    'instead of overnight, and get a smart meter and NC6 registration in place so the Clean Export Guarantee can start paying you.'
             });
         }
 
@@ -838,14 +997,14 @@ window.EnergyModel = (function () {
                 icon: '🇮🇪',
                 title: 'You may pass the €400 export exemption',
                 body: 'Estimated export income of about €' + Math.round(annualExportIncome) + ' a year is above the €400 that is exempt from income tax, ' +
-                    'USC and PRSI (the relief runs to the end of 2028). Anything over €400 goes on your annual return — worth a word with Revenue or an accountant.'
+                    'USC and PRSI (relief runs to end of 2028). Anything over €400 goes on your annual return — worth a word with Revenue or an accountant.'
             });
         } else if (t.exportEnabled) {
             notes.push({
                 icon: '🇮🇪',
                 title: 'Export income looks tax-free',
                 body: 'At roughly €' + Math.round(annualExportIncome) + ' a year you sit under the €400 microgeneration exemption from income tax, USC and PRSI, ' +
-                    'which runs to the end of 2028. You need a smart meter and an NC6 registered with ESB Networks to be paid at all.'
+                    'which runs to end of 2028. You need a smart meter and an NC6 registered with ESB Networks to be paid at all.'
             });
         }
 
@@ -864,7 +1023,7 @@ window.EnergyModel = (function () {
             notes.push({
                 icon: '☀️',
                 title: excellent.length + ' clear day' + (excellent.length > 1 ? 's' : '') + ' in the next week',
-                body: 'Leave the battery with room on those mornings, and put the dishwasher, washing machine and any car charging into the middle of the day. ' +
+                body: 'Put the dishwasher, washing machine and any extra daytime loads into the middle of the day. ' +
                     'On a clear day the panels cover the house outright and everything after that is surplus.'
             });
         }
@@ -879,11 +1038,10 @@ window.EnergyModel = (function () {
 
         notes.push({
             icon: '📈',
-            title: 'About €' + Math.round(annualSaving) + ' a year at these rates',
-            body: 'Roughly €' + Math.round(annualSolarSaving) + ' from the panels and €' + Math.round(annualBatterySaving) +
-                ' from moving load onto cheap rates. Based on ' + Math.round(annualGenKwh) + ' kWh a year from a ' + systemCapacityKwp +
-                ' kWp system — 850 kWh per kWp is a realistic Irish figure, well below what a good week in July suggests. ' +
-                'The €1,800 SEAI grant and 0% VAT on domestic solar come off the install cost when you work out payback.'
+            title: 'About €' + Math.round(annualSaving) + ' a year (' + Math.round(annualGenKwh).toLocaleString('en-IE') + ' kWh/yr)',
+            body: 'Roughly €' + Math.round(annualSolarSaving) + ' from your panels (' + specificYield + ' kWh/kWp/yr for your exact roof, location, shading & age) and €' +
+                Math.round(annualBatterySaving) + ' from tariff shifting. This week alone avoids ~' + Math.round(weekCo2) + ' kg CO₂. ' +
+                'The €1,800 SEAI grant and 0% VAT on domestic solar come off install cost when working out payback.'
         });
 
         notes.push({
@@ -906,7 +1064,9 @@ window.EnergyModel = (function () {
         const c = config || {};
         return {
             dailyUsageKwh: c.dailyUsageKwh === undefined ? DEFAULT_CONFIG.dailyUsageKwh : c.dailyUsageKwh,
+            weatherAdjustedLoad: !!c.weatherAdjustedLoad,
             loadProfile: c.loadProfile || DEFAULT_CONFIG.loadProfile,
+            customHourlyShape: Array.isArray(c.customHourlyShape) ? c.customHourlyShape : null,
             battery: Object.assign({}, DEFAULT_CONFIG.battery, c.battery || {}),
             grid: Object.assign({}, DEFAULT_CONFIG.grid, c.grid || {}),
             ev: Object.assign({}, DEFAULT_CONFIG.ev, c.ev || {}),
@@ -926,10 +1086,12 @@ window.EnergyModel = (function () {
         bandForHour: bandForHour,
         rateForBand: rateForBand,
         bandLabel: bandLabel,
+        effectiveDailyUsage: effectiveDailyUsage,
         buildLoads: buildLoads,
         generationByHour: generationByHour,
         clippedByHour: clippedByHour,
         simulateDay: simulateDay,
+        simulateWeek: simulateWeek,
         compareStrategies: compareStrategies,
         buildInsights: buildInsights,
         assessSystem: assessSystem,

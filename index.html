@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Irish Solar &amp; Savings Predictor — Newcastle West</title>
-    <meta name="description" content="Hourly solar generation forecast and running-cost model for Irish homes, with day/night/EV tariff rates, battery dispatch and Clean Export Guarantee income.">
+    <meta name="description" content="Hourly solar generation forecast and running-cost model for Irish homes, with multi-model confidence (ECMWF, ICON, UKMO), Hay–Davies transposition, battery dispatch and Clean Export Guarantee income.">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,7 +27,7 @@
             <div class="brand-icon">☀️</div>
             <div class="brand-text">
                 <h1>Solar &amp; Savings Predictor</h1>
-                <p>Hourly generation, battery dispatch and running costs for Irish homes</p>
+                <p>Hourly PV physics, multi-model confidence &amp; Irish tariff dispatch</p>
             </div>
         </div>
         <div class="header-right">
@@ -43,11 +43,12 @@
     <section class="panel">
         <div class="panel-head">
             <h3 class="panel-title">Location</h3>
-            <span class="panel-hint">Any Irish Eircode or town</span>
+            <span id="locationPrecisionBadge" class="precision-pill precision-exact">Exact match</span>
         </div>
         <div class="search-input-group">
-            <input type="text" id="locationSearchInput" placeholder="Eircode (V42 AD96) or town name" value="V42 AD96" autocomplete="postal-code">
+            <input type="text" id="locationSearchInput" placeholder="Eircode (V42 AD96), town, or GPS coords (52.3325, -9.1842)" value="V42 AD96" autocomplete="postal-code">
             <button id="btnSearchLocation" class="btn btn-cyan">Find location</button>
+            <button id="btnUseGps" class="btn btn-ghost" title="Use your device GPS for exact roof coordinates">📍 My GPS</button>
         </div>
         <div class="preset-pills">
             <span class="pill-label">Quick pick</span>
@@ -61,17 +62,53 @@
         </div>
     </section>
 
+    <!-- ── ESB Networks Smart Meter Upload (HDF CSV) ────────────── -->
+    <section class="panel" id="meterUploadPanel">
+        <div class="panel-head">
+            <h3 class="panel-title">⚡ Link Your ESB Networks Smart Meter (HDF CSV)</h3>
+            <span id="meterStatusBadge" class="precision-pill precision-town">100% private · stays in your browser</span>
+        </div>
+
+        <div id="meterDropzone" class="meter-dropzone" role="button" tabindex="0" aria-label="Upload ESB Networks HDF CSV file">
+            <div class="meter-drop-left">
+                <div class="meter-drop-icon">📄</div>
+                <div>
+                    <div id="meterDropTitle" class="meter-drop-title">Drop your ESB Networks HDF CSV here, or click to browse</div>
+                    <div id="meterDropSub" class="meter-drop-sub">Supports <code>HDF_calckWh_*.csv</code> and <code>HDF_kW_*.csv</code> from esbnetworks.ie — unlocks your real 24-hour house usage profile, actual export earnings &amp; tariff back-testing.</div>
+                </div>
+            </div>
+            <div class="meter-actions">
+                <button type="button" id="btnPickMeterCsv" class="btn btn-cyan btn-sm">Upload HDF CSV</button>
+                <button type="button" id="btnApplyMeterUsage" class="btn btn-ghost btn-sm" style="display:none;">Use my real usage</button>
+                <button type="button" id="btnClearMeter" class="btn btn-danger-ghost btn-sm" style="display:none;">Remove</button>
+            </div>
+            <input type="file" id="meterFileInput" accept=".csv,text/csv" style="display:none;">
+        </div>
+
+        <div id="meterErrorBanner" class="error-banner" style="display:none;margin-top:12px;"></div>
+
+        <div id="meterSummaryWrap" style="display:none;">
+            <div id="meterKpis" class="meter-kpis"></div>
+            <div id="meterTaxBar" class="meter-tax-bar" style="display:none;"></div>
+            <div id="meterTimerLeakCallout" class="callout callout-amber" style="display:none;">
+                <strong>⚠️ Charging Timer Spillover Detected</strong>
+                <span id="meterTimerLeakText"></span>
+            </div>
+        </div>
+    </section>
+
     <!-- ── Your setup ───────────────────────────────────────────── -->
     <section class="setup-grid">
 
         <div class="panel">
             <div class="panel-head">
                 <h3 class="panel-title">Your array</h3>
+                <span id="totalKwpBadge" class="panel-hint">5.0 kWp total</span>
             </div>
             <div class="field-grid">
                 <div class="field">
                     <label for="sysCapacity">System size (kWp)</label>
-                    <input type="number" id="sysCapacity" value="5.0" step="0.5" min="0.5" max="30">
+                    <input type="number" id="sysCapacity" value="5.0" step="0.1" min="0.5" max="30">
                 </div>
                 <div class="field">
                     <label for="inverterKw">Inverter limit (kW)</label>
@@ -91,6 +128,9 @@
                         <option value="SOUTH_SOUTH_EAST">South-south-east — 157°</option>
                         <option value="SOUTH_EAST">South-east — 135°</option>
                         <option value="EAST">East — 90°</option>
+                        <option value="EAST_WEST">East–West 50/50 split</option>
+                        <option value="NORTH_WEST">North-west — 315°</option>
+                        <option value="NORTH_EAST">North-east — 45°</option>
                     </select>
                 </div>
                 <div class="field">
@@ -112,7 +152,45 @@
                     <label for="exportLimit">Export cap (kW)</label>
                     <input type="number" id="exportLimit" value="6.0" step="0.5" min="0" max="50">
                 </div>
+                <div class="field field-wide">
+                    <label for="calibrationPct">Real-world calibration (% — match your inverter app)</label>
+                    <input type="number" id="calibrationPct" value="100" step="1" min="70" max="130">
+                </div>
             </div>
+
+            <!-- Optional 2nd roof plane for split strings -->
+            <div class="array2-panel">
+                <div class="toggle-row" style="padding:0;border:none;background:transparent;">
+                    <label class="switch">
+                        <input type="checkbox" id="array2Enabled">
+                        <span class="slider"></span>
+                    </label>
+                    <span class="toggle-name">Second roof face (split string)</span>
+                </div>
+                <div id="array2Fields" class="field-grid array2-grid" style="display:none;">
+                    <div class="field">
+                        <label for="array2Capacity">2nd face size (kWp)</label>
+                        <input type="number" id="array2Capacity" value="2.5" step="0.1" min="0.2" max="20">
+                    </div>
+                    <div class="field">
+                        <label for="array2Tilt">2nd pitch (°)</label>
+                        <input type="number" id="array2Tilt" value="35" step="5" min="0" max="90">
+                    </div>
+                    <div class="field field-wide">
+                        <label for="array2Orientation">2nd face facing</label>
+                        <select id="array2Orientation">
+                            <option value="WEST" selected>West — 270°</option>
+                            <option value="EAST">East — 90°</option>
+                            <option value="SOUTH">South — 180°</option>
+                            <option value="SOUTH_WEST">South-west — 225°</option>
+                            <option value="SOUTH_EAST">South-east — 135°</option>
+                            <option value="NORTH_WEST">North-west — 315°</option>
+                            <option value="NORTH_EAST">North-east — 45°</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
             <p class="panel-note">ESB Networks assesses the NC6 limit on the <strong>inverter</strong>, not the panels:
                 25 A (~6 kVA) single phase, 16 A per phase (~11 kVA) three phase. A bigger array behind a smaller inverter is normal.</p>
         </div>
@@ -134,12 +212,13 @@
                         <option value="DAYTIME">Home all day / WFH</option>
                         <option value="HEAT_PUMP">Heat pump home</option>
                         <option value="FLAT">Even through the day</option>
+                        <option value="CUSTOM_METER" id="customMeterOpt" disabled>My ESB smart meter (upload CSV)</option>
                     </select>
                 </div>
                 <div class="field field-wide">
                     <label for="flexSchedule">When flexible loads run</label>
                     <select id="flexSchedule">
-                        <option value="CHEAP_NIGHT" selected>Cheap night window (02:00–05:00)</option>
+                        <option value="CHEAP_NIGHT" selected>Cheap night window</option>
                         <option value="SOLAR">Middle of the day, off the panels</option>
                         <option value="ANYTIME">Evening, whenever needed</option>
                     </select>
@@ -147,6 +226,14 @@
             </div>
 
             <div class="toggle-stack">
+                <div class="toggle-row">
+                    <label class="switch">
+                        <input type="checkbox" id="weatherAdjustedLoad">
+                        <span class="slider"></span>
+                    </label>
+                    <span class="toggle-name">Weather-adjusted usage <span style="font-size:0.72rem;color:var(--text-subtle);font-weight:500;">(+rain / cold days)</span></span>
+                </div>
+
                 <div class="toggle-row">
                     <label class="switch">
                         <input type="checkbox" id="batteryEnabled" checked>
@@ -192,7 +279,7 @@
                 <div class="field field-wide">
                     <label for="batteryStrategy">Battery charging plan</label>
                     <select id="batteryStrategy">
-                        <option value="SMART" selected>Smart — let the forecast decide</option>
+                        <option value="SMART" selected>Smart — forecast-led &amp; peak-preserving</option>
                         <option value="NIGHT_FIRST">Night-first — fill it every night</option>
                         <option value="SOLAR_ONLY">Solar only — never buy from the grid</option>
                     </select>
@@ -213,35 +300,47 @@
                 <span class="panel-hint">Cent per kWh, VAT included</span>
             </div>
             <div class="preset-pills" style="margin-bottom:14px;">
-                <button class="pill-btn" data-tariff="EV_NIGHT">EV / night plan</button>
-                <button class="pill-btn" data-tariff="SMART_PEAK">Smart with 17–19 peak</button>
-                <button class="pill-btn" data-tariff="STANDARD_24H">Flat 24-hour</button>
-                <button class="pill-btn" data-tariff="NO_EXPORT">No export payment</button>
+                <button class="pill-btn active" data-tariff="FLOGAS_EV">Flogas Smart EV (Bill)</button>
+                <button class="pill-btn" data-tariff="EV_NIGHT">EV 02–05</button>
+                <button class="pill-btn" data-tariff="EV_4H">EV 02–06 (4h)</button>
+                <button class="pill-btn" data-tariff="NIGHT_BOOST_2H">Night boost 02–04</button>
+                <button class="pill-btn" data-tariff="SMART_PEAK">Smart 17–19 peak</button>
+                <button class="pill-btn" data-tariff="STANDARD_24H">Flat 24h</button>
+                <button class="pill-btn" data-tariff="NO_EXPORT">No export</button>
             </div>
             <div class="field-grid">
                 <div class="field">
                     <label for="rateDay">Day 08:00–23:00</label>
-                    <input type="number" id="rateDay" value="30" step="0.1" min="0" max="200">
+                    <input type="number" id="rateDay" value="31.76" step="0.01" min="0" max="200">
                 </div>
                 <div class="field">
                     <label for="rateNight">Night 23:00–08:00</label>
-                    <input type="number" id="rateNight" value="20" step="0.1" min="0" max="200">
+                    <input type="number" id="rateNight" value="24.67" step="0.01" min="0" max="200">
                 </div>
                 <div class="field">
-                    <label for="rateEv">EV window 02:00–05:00</label>
-                    <input type="number" id="rateEv" value="10" step="0.1" min="0" max="200">
+                    <label for="rateEv">EV window rate</label>
+                    <input type="number" id="rateEv" value="9.96" step="0.01" min="0" max="200">
                 </div>
                 <div class="field">
-                    <label for="ratePeak">Evening peak 17:00–19:00</label>
-                    <input type="number" id="ratePeak" value="30" step="0.1" min="0" max="200">
+                    <label for="evWindowSelect">EV cheap hours</label>
+                    <select id="evWindowSelect">
+                        <option value="2-5" selected>02:00 – 05:00 (3h)</option>
+                        <option value="2-6">02:00 – 06:00 (4h)</option>
+                        <option value="2-4">02:00 – 04:00 (2h)</option>
+                        <option value="2-2">None</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="ratePeak">Evening peak 17–19</label>
+                    <input type="number" id="ratePeak" value="40.95" step="0.01" min="0" max="200">
                 </div>
                 <div class="field">
                     <label for="rateExport">Export (CEG)</label>
                     <input type="number" id="rateExport" value="18.5" step="0.1" min="0" max="200">
                 </div>
-                <div class="field">
-                    <label for="standingCharge">Standing charge (€/day)</label>
-                    <input type="number" id="standingCharge" value="0.85" step="0.05" min="0" max="10">
+                <div class="field field-wide">
+                    <label for="standingCharge">Standing charge + PSO (€/day incl. VAT)</label>
+                    <input type="number" id="standingCharge" value="1.11" step="0.01" min="0" max="10">
                 </div>
             </div>
             <button id="btnRecalculate" class="btn btn-amber btn-block">Update the model</button>
@@ -260,6 +359,7 @@
                 <div>
                     <div id="verdictBadge" class="solar-badge badge-excellent">Wall-to-wall sunshine</div>
                     <div class="verdict-score">Rated <strong id="solarScoreVal">—</strong> against a cloudless sky</div>
+                    <div id="confidenceBadge" class="confidence-pill conf-high" style="display:none;"></div>
                 </div>
             </div>
             <p id="verdictSummary" class="stat-desc">Loading forecast…</p>
@@ -274,7 +374,12 @@
         <div class="card">
             <div class="card-title"><span>Generation</span><span>⚡</span></div>
             <div class="main-stat"><span id="totalKwhVal">—</span> <span class="unit">kWh</span></div>
-            <p class="stat-desc"><strong id="yieldPerKwpVal">—</strong> kWh per kWp installed. Peak <strong id="peakPowerVal">—</strong> kW around <strong id="peakHourVal">—</strong>.</p>
+            <div id="kwhRangeText" class="range-sub" style="display:none;"></div>
+            <p class="stat-desc"><strong id="yieldPerKwpVal">—</strong> kWh per kWp installed. Peak <strong id="peakPowerVal">—</strong> kW during <strong id="peakHourVal">—</strong>.</p>
+            <div class="callout callout-cyan" id="remainingTodayCallout" style="display:none;">
+                <strong>Still to come today</strong>
+                <span id="remainingKwhVal">—</span>
+            </div>
             <div class="callout callout-amber">
                 <strong>Best window for a big load</strong>
                 <span id="applianceWindowVal">—</span>
@@ -284,12 +389,12 @@
         <div class="card">
             <div class="card-title"><span>Today's electricity bill</span><span>💶</span></div>
             <div class="main-stat"><span id="dayCostVal">—</span></div>
-            <p class="stat-desc">Without solar or battery this day costs <strong id="dayBaselineVal">—</strong>. You keep <strong id="daySavingVal" class="pos">—</strong>.</p>
+            <p class="stat-desc">Without solar or battery this day costs <strong id="dayBaselineVal">—</strong>. You keep <strong id="daySavingVal" class="pos">—</strong>.<span id="dayUsageNote"></span></p>
             <div class="callout callout-emerald">
                 <strong>Export</strong>
                 <span><span id="exportKwhVal">—</span> kWh sold back, worth <span id="exportIncomeVal">—</span></span>
             </div>
-            <div class="callout callout-rose" id="lossCallout">
+            <div class="callout callout-rose" id="lossCallout" style="display:none;">
                 <strong>Never generated</strong>
                 <span id="lossVal">—</span>
             </div>
@@ -300,7 +405,7 @@
     <section class="stack">
         <div class="section-header">
             <h2 class="section-title">The week ahead</h2>
-            <p class="section-sub">Tap a day to model it in detail</p>
+            <p class="section-sub">Tap a day to model it in detail · battery charge carries over day to day</p>
         </div>
         <div id="forecastGrid" class="forecast-grid"></div>
         <div id="weekTotals" class="week-totals"></div>
@@ -315,6 +420,8 @@
                 <button class="tab-btn" data-chart="generation">Generation</button>
                 <button class="tab-btn" data-chart="battery">Battery &amp; rates</button>
                 <button class="tab-btn" data-chart="irradiance">Irradiance</button>
+                <button class="tab-btn" data-chart="seasonal">12-month yield</button>
+                <button class="tab-btn" data-chart="meter" id="btnChartMeter" style="display:none;">My meter (monthly)</button>
             </div>
         </div>
         <div class="chart-wrapper"><canvas id="hourlyChart"></canvas></div>
@@ -331,9 +438,31 @@
             </table>
         </div>
         <div class="panel">
-            <div class="panel-head"><h3 class="panel-title">Charging plans compared</h3><span class="panel-hint">Same day, same house</span></div>
+            <div class="panel-head"><h3 class="panel-title">Charging plans compared</h3><span class="panel-hint">Same day, same opening charge</span></div>
             <div id="strategyList" class="strategy-list"></div>
             <div id="splitBars" class="split-bars"></div>
+        </div>
+    </section>
+
+    <!-- ── My ESB Meter Tariff Back-Test (shown when HDF uploaded) ─ -->
+    <section class="stack" id="meterHistorySection" style="display:none;">
+        <div class="section-header">
+            <h2 class="section-title">📊 Your real ESB meter — tariff back-test</h2>
+            <p id="meterPeriodSubtitle" class="section-sub"></p>
+        </div>
+        <div class="cost-grid">
+            <div class="panel">
+                <div class="panel-head"><h3 class="panel-title">Your actual meter by rate band</h3><span class="panel-hint">At your current tariff above</span></div>
+                <table class="mini-table">
+                    <thead><tr><th>Rate band</th><th>Imported</th><th>Rate</th><th>Cost</th></tr></thead>
+                    <tbody id="meterBandTableBody"></tbody>
+                </table>
+            </div>
+            <div class="panel">
+                <div class="panel-head"><h3 class="panel-title">Which Irish tariff would be cheapest for YOU?</h3><span class="panel-hint">Back-tested on your half-hourly readings</span></div>
+                <div id="meterTariffCompare" class="strategy-list"></div>
+                <p id="meterCalibrationHint" class="panel-note"></p>
+            </div>
         </div>
     </section>
 
@@ -359,13 +488,13 @@
     <section class="stack">
         <div class="section-header">
             <h2 class="section-title">Hour by hour</h2>
-            <p class="section-sub">Weather, generation, household load and grid flows</p>
+            <p class="section-sub">Preceding-hour intervals (e.g. 12–13 = noon to 1 pm) · weather, generation, load and grid flows</p>
         </div>
         <div class="table-container">
             <table class="hourly-table">
                 <thead>
                     <tr>
-                        <th>Hour</th><th>Rate</th><th>Weather</th><th>Temp</th><th>Cloud</th>
+                        <th>Interval</th><th>Rate</th><th>Weather</th><th>Temp</th><th>Cloud</th>
                         <th>Irradiance actual / clear</th><th>Generation</th><th>House load</th>
                         <th>Battery</th><th>Grid</th>
                     </tr>
@@ -378,13 +507,14 @@
 </main>
 
 <footer>
-    <p>Irish Solar &amp; Savings Predictor · Weather from the Open-Meteo high-resolution model</p>
-    <p id="footerCoordsText" class="footer-sub">Newcastle West, Co. Limerick (V42 AD96) · 52.4497° N, 9.0612° W</p>
-    <p class="footer-sub">Estimates only. Actual generation and bills depend on shading, your panels, your meter and your supplier's current rates. Check rates on your own bill before making decisions.</p>
+    <p>Irish Solar &amp; Savings Predictor · Open-Meteo High-Res + ECMWF / ICON / UKMO Ensemble Confidence</p>
+    <p id="footerCoordsText" class="footer-sub">Newcastle West, Co. Limerick (V42 AD96) · 52.4497° N, 9.0612° W · 61 m</p>
+    <p class="footer-sub">Estimates only. Actual generation and bills depend on local horizon shading, panel specifics, meter setup and your supplier's current rates. Check rates on your own bill before making decisions.</p>
 </footer>
 
 <script src="solar-model.js"></script>
 <script src="energy-model.js"></script>
+<script src="meter-model.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

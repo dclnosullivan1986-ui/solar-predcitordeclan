@@ -200,9 +200,148 @@ header {
 
 .btn-cyan { background: linear-gradient(135deg, #06b6d4, #0284c7); }
 .btn-cyan:hover { transform: translateY(-2px); box-shadow: 0 0 20px rgba(6, 182, 212, 0.4); }
+.btn-ghost {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color: var(--text-main);
+}
+.btn-ghost:hover {
+    background: rgba(6, 182, 212, 0.18);
+    border-color: var(--accent-cyan);
+    color: #38bdf8;
+    transform: translateY(-2px);
+}
 .btn-amber { background: linear-gradient(135deg, #f59e0b, #b45309); box-shadow: var(--shadow-glow); }
 .btn-amber:hover { transform: translateY(-2px); box-shadow: 0 0 30px rgba(245, 158, 11, 0.5); }
 .btn-block { width: 100%; margin-top: 16px; }
+
+.precision-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 12px;
+    font-size: 0.72rem; font-weight: 700;
+}
+.precision-exact { background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
+.precision-town  { background: rgba(6, 182, 212, 0.16); color: #38bdf8; border: 1px solid rgba(6, 182, 212, 0.35); }
+.precision-area  { background: rgba(245, 158, 11, 0.18); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+
+.confidence-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 12px;
+    font-size: 0.7rem; font-weight: 700;
+    font-family: var(--mono);
+    margin-top: 6px;
+}
+.conf-high { background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+.conf-med  { background: rgba(245, 158, 11, 0.16); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); }
+.conf-low  { background: rgba(244, 63, 94, 0.16); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.35); }
+
+.range-sub {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    margin-bottom: 8px;
+}
+
+.callout-cyan { background: rgba(6, 182, 212, 0.11); border-left: 3px solid var(--accent-cyan); color: #cffafe; }
+
+.array2-panel {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-sunken);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.array2-grid { margin-top: 10px; }
+
+.day-range {
+    font-size: 0.66rem;
+    color: var(--text-subtle);
+    font-family: var(--mono);
+    margin-top: 2px;
+}
+
+.hourly-table tr.is-now {
+    background: rgba(245, 158, 11, 0.10);
+    box-shadow: inset 3px 0 0 var(--accent-amber);
+}
+.now-tag {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 1px 5px;
+    border-radius: 6px;
+    background: var(--accent-amber);
+    color: #0f172a;
+    font-size: 0.62rem;
+    font-weight: 800;
+    vertical-align: middle;
+}
+
+/* ── ESB Smart Meter (HDF CSV) Upload & Analytics ───────────── */
+.meter-dropzone {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 16px 18px;
+    border-radius: var(--radius-md);
+    border: 1.5px dashed rgba(6, 182, 212, 0.42);
+    background: rgba(15, 23, 42, 0.58);
+    transition: var(--transition-fast);
+    cursor: pointer;
+}
+.meter-dropzone:hover, .meter-dropzone.drag-over {
+    border-color: var(--accent-amber);
+    background: rgba(245, 158, 11, 0.08);
+}
+.meter-drop-left { display: flex; align-items: center; gap: 12px; min-width: 220px; flex: 1; }
+.meter-drop-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: rgba(6, 182, 212, 0.16);
+    border: 1px solid rgba(6, 182, 212, 0.35);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.25rem; flex-shrink: 0;
+}
+.meter-drop-title { font-size: 0.92rem; font-weight: 700; color: #fff; }
+.meter-drop-sub { font-size: 0.76rem; color: var(--text-muted); margin-top: 2px; line-height: 1.4; }
+.meter-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn-sm { padding: 8px 14px; font-size: 0.8rem; border-radius: var(--radius-sm); }
+.btn-danger-ghost {
+    background: rgba(244, 63, 94, 0.12);
+    border: 1px solid rgba(244, 63, 94, 0.35);
+    color: #fda4af;
+}
+.btn-danger-ghost:hover { background: rgba(244, 63, 94, 0.24); color: #fff; }
+
+.meter-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+.meter-kpi {
+    background: var(--bg-sunken);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 3px;
+}
+.meter-kpi b { font-size: 1.2rem; font-weight: 800; color: #fff; font-family: var(--mono); }
+.meter-kpi span { font-size: 0.72rem; color: var(--text-muted); }
+.meter-kpi small { font-size: 0.68rem; color: var(--text-subtle); margin-top: 2px; }
+
+.meter-tax-bar {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-sunken);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.meter-tax-head {
+    display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;
+    font-size: 0.8rem; color: var(--text-muted); margin-bottom: 7px;
+}
+.meter-tax-head strong { color: #fff; font-family: var(--mono); }
 
 .preset-pills {
     display: flex; align-items: center; gap: 8px;
